@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#121212</color>
+    <color name="card_bg">#1E1E1E</color>
+    <color name="accent_yamaha_blue">#004B93</color>
+    <color name="accent_cyan">#00E5FF</color>
+    <color name="accent_green">#00E676</color>
+    <color name="accent_amber">#FFD600</color>
+    <color name="accent_orange">#FF9100</color>
+    <color name="accent_red">#FF5252</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B0BEC5</color>
+    <color name="border_color">#2C2C2C</color>
+</resources>
