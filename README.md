@@ -116,8 +116,8 @@ adb install -r release/xsr-companion-v1.0.apk
 Requirements: Android SDK (API 34), JDK 17.
 
 ```bash
-git clone https://github.com/your-username/yamaha-xsr-companion.git
-cd yamaha-xsr-companion
+git clone https://github.com/agasthya36/xsr-companion.git
+cd xsr-companion
 ./gradlew assembleDebug
 ```
 The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
