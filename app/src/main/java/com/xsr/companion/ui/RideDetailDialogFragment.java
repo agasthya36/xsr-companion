@@ -106,36 +106,81 @@ public class RideDetailDialogFragment extends DialogFragment {
         LinearLayout container = view.findViewById(R.id.statsContainer);
         container.removeAllViews();
 
-        addStat(container, "Distance", Units.distance(settings, summary.distanceKm));
-        addStat(container, "Moving time", summary.getFormattedMovingTime());
-        addStat(container, "Total time", summary.getFormattedDuration());
-        addStat(container, "Average speed", Units.speed(settings, summary.avgSpeedKmh));
-        addStat(container, "Top speed", Units.speed(settings, summary.topSpeedKmh));
-        addStat(container, "Max RPM", String.format(Locale.getDefault(), "%,d", summary.maxRpm));
-        addStat(container, "Average RPM", String.format(Locale.getDefault(), "%,d", summary.avgRpm));
-        addStat(container, "Max coolant", Units.temp(settings, summary.maxCoolant));
-        addStat(container, "Fuel used", Units.fuel(settings, summary.fuelUsedL));
-        addStat(container, "Mileage", Units.mileage(settings, summary.avgMileageKmL));
-        addStat(container, "Odometer", Units.distance(settings, summary.startOdoKm)
-                + " → " + Units.distance(settings, summary.endOdoKm));
+        addStatGrid(container, new String[][]{
+                {"Distance", Units.distance(settings, summary.distanceKm)},
+                {"Moving time", summary.getFormattedMovingTime()},
+                {"Total time", summary.getFormattedDuration()},
+                {"Average speed", Units.speed(settings, summary.avgSpeedKmh)},
+                {"Top speed", Units.speed(settings, summary.topSpeedKmh)},
+                {"Max RPM", String.format(Locale.getDefault(), "%,d", summary.maxRpm)},
+                {"Average RPM", String.format(Locale.getDefault(), "%,d", summary.avgRpm)},
+                {"Max coolant", Units.temp(settings, summary.maxCoolant)},
+                {"Fuel used", Units.fuel(settings, summary.fuelUsedL)},
+                {"Mileage", Units.mileage(settings, summary.avgMileageKmL)},
+        });
+        addStatWide(container, "Odometer", Units.distance(settings, summary.startOdoKm)
+                + " → " + Units.distance(settings, summary.endOdoKm), false);
         if (summary.notes != null && !summary.notes.trim().isEmpty()) {
-            addStat(container, "Notes", summary.notes);
+            addStatWide(container, "Notes", summary.notes, true);
         }
     }
 
-    private void addStat(LinearLayout container, String label, String value) {
-        View row = LayoutInflater.from(container.getContext())
-                .inflate(android.R.layout.simple_list_item_2, container, false);
-        TextView first = row.findViewById(android.R.id.text1);
-        TextView second = row.findViewById(android.R.id.text2);
-        first.setText(label);
-        second.setText(value);
-        first.setTextColor(0xFFF5F8FF);
-        second.setTextColor(0xFFA7B3C7);
-        first.setTextSize(14f);
-        second.setTextSize(12f);
-        row.setPadding(0, 10, 0, 10);
-        container.addView(row);
+    private void addStatGrid(LinearLayout container, String[][] stats) {
+        LinearLayout row = null;
+        for (int i = 0; i < stats.length; i++) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(container.getContext());
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setBaselineAligned(false);
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowParams.topMargin = i == 0 ? 0 : dp(8);
+                container.addView(row, rowParams);
+            }
+            LinearLayout tile = inflateStat(container, stats[i][0], stats[i][1], false);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            if (i % 2 == 0) {
+                lp.setMarginEnd(dp(5));
+            } else {
+                lp.setMarginStart(dp(5));
+            }
+            row.addView(tile, lp);
+        }
+        // Keep a lone final tile at half width so the columns stay aligned.
+        if (row != null && stats.length % 2 == 1) {
+            View spacer = new View(container.getContext());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMarginStart(dp(5));
+            row.addView(spacer, lp);
+        }
+    }
+
+    private void addStatWide(LinearLayout container, String label, String value, boolean multiLine) {
+        LinearLayout tile = inflateStat(container, label, value, multiLine);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        container.addView(tile, lp);
+    }
+
+    private LinearLayout inflateStat(LinearLayout container, String label, String value,
+                                     boolean multiLine) {
+        LinearLayout tile = (LinearLayout) LayoutInflater.from(container.getContext())
+                .inflate(R.layout.item_ride_stat, container, false);
+        TextView valueView = tile.findViewById(R.id.tvStatValue);
+        TextView labelView = tile.findViewById(R.id.tvStatLabel);
+        valueView.setText(value);
+        valueView.setMaxLines(multiLine ? 4 : 1);
+        labelView.setText(label);
+        return tile;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private List<RideDatabaseHelper.RidePoint> downsample(List<RideDatabaseHelper.RidePoint> points,

@@ -81,7 +81,7 @@ public class RideChartView extends View {
 
         float padLeft = getPaddingLeft() + 2f;
         float padRight = getPaddingRight() + 2f;
-        float padTop = getPaddingTop() + 14f;
+        float padTop = getPaddingTop() + textPaint.getTextSize() + 4f;
         float padBottom = getPaddingBottom() + 16f;
         float plotW = width - padLeft - padRight;
         float plotH = height - padTop - padBottom;
