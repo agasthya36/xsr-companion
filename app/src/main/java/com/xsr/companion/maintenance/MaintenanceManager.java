@@ -75,7 +75,7 @@ public class MaintenanceManager {
     }
 
     public synchronized void updateOdometer(double odoKm) {
-        if (odoKm > currentOdometerKm) {
+        if (odoKm > 0) {
             currentOdometerKm = odoKm;
             prefs.edit().putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm).apply();
         }

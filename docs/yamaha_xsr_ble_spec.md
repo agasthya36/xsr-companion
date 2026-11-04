@@ -49,24 +49,44 @@ public static byte calculateChecksum(byte[] data, int length) {
 
 ## 4. Inbound & Outbound Packets
 
-### 4.1 Telemetry Streaming Trigger (`0x7F01` - `SCCU1StartProcEnt`)
-* **Trigger**: Transmitted immediately upon BLE GATT connection and service discovery.
-* **Length**: 8 bytes.
-* **Effect**: Commands the CCU to start streaming continuous `LOCAL` and `CAN` frames over the TX Characteristic at 100–1000 ms intervals.
+### 4.1 CCU Session Authentication Packet (`0x7F00` - `SCCU1AuthEnt`) [Phone -> CCU]
+* **Trigger**: Transmitted immediately upon MTU change negotiation (`onMtuChanged`).
+* **Length**: 60 bytes.
+* **Effect**: Authenticates the phone session with the motorcycle CCU. CCU validates the CCUID, passkey, and bonding flag, and responds with Packet `0x7F01`.
 
-| Offset | Size | Field | Value |
+| Offset | Size | Field | Value / Description |
+| :---: | :---: | :--- | :--- |
+| `0` | 1 | `startByte` | `0xAA` (`-86` signed) |
+| `1` | 1 | `group` | `0x01` |
+| `2-3` | 2 | `localId7F00` | `0x7F, 0x00` (ID `0x7F00`) |
+| `4` | 1 | `length` | `0x35` (53 bytes payload) |
+| `5-18` | 14 | `ccuid` | CCU ID ASCII (e.g. `00000005826927`) |
+| `19-24` | 6 | `passKey` | Passkey ASCII (6 chars, e.g. `000000`) |
+| `25-56` | 32 | `phoneUuid` | Phone UUID ASCII (32 hex chars without hyphens) |
+| `57` | 1 | `updateBondingFlag` | `0x00` if already bonded, `0x01` if initial pairing |
+| `58` | 1 | `counter` | Rolling counter (`0..255`) |
+| `59` | 1 | `checksum` | Two's complement checksum over offsets `0..58` |
+
+---
+
+### 4.2 Start Processing Acknowledgment (`0x7F01` - `SCCU1StartProcEnt`) [CCU -> Phone]
+* **Trigger**: Sent by CCU in response to `0x7F00` authentication packet.
+* **Length**: 8 bytes.
+* **Effect**: Confirms whether authentication succeeded and telemetry streaming has started.
+
+| Offset | Size | Field | Value / Description |
 | :---: | :---: | :--- | :--- |
 | `0` | 1 | `startByte` | `0x5A` |
 | `1` | 1 | `group` | `0x01` |
 | `2-3` | 2 | `localId7F01` | `0x7F, 0x01` (ID `0x7F01`) |
 | `4` | 1 | `length` | `0x01` |
-| `5` | 1 | `startProcessingFlag` | `0x01` (1 = Start streaming) |
+| `5` | 1 | `startProcessingFlag` | `0x01` (Auth Accepted, streaming), `0x00` (Auth Failed) |
 | `6` | 1 | `counter` | Rolling counter (`0..255`) |
 | `7` | 1 | `checksum` | Two's complement checksum |
 
 ---
 
-### 4.2 Periodic Time & Phone Battery Packet (`0x058A` - `SCCU1CanMsg058AEnt`)
+### 4.3 Periodic Time & Phone Battery Packet (`0x058A` - `SCCU1CanMsg058AEnt`) [Phone -> CCU]
 * **Interval**: Transmitted every **1000 ms** (1.0 second).
 * **Length**: 15 bytes.
 
@@ -105,9 +125,44 @@ public static byte calculateChecksum(byte[] data, int length) {
 
 ---
 
-## 5. Bike-Emitted Telemetry & Slot Keys
+## 5. Bike-Emitted Telemetry & Packet Decoding
 
-When streaming is activated, the bike broadcasts `LOCAL` and `CAN` frames containing vehicle data:
+When notifications are enabled on the NUS TX Characteristic (`...31b402635de9`), the CCU broadcasts live telemetry at **10 Hz** using two primary frame types: `0x55` (Local Real-Time Frame) and `0x56` (CAN Bus Frame).
+
+### 5.1 Local Real-Time Telemetry Frame (`0x55`) [CCU -> Phone]
+* **Length**: 47 bytes.
+* **Format**: TLV (Type-Length-Value) records wrapped inside a standard frame.
+* **Structure**:
+  * `data[0]`: `0x55` (Start byte)
+  * `data[1]`: `0x02` (Group)
+  * **TLV 1 (`0x0001`)**: ECU Sensor Data (Length: 33 bytes / `0x21`)
+    * `val[0..1]`: Engine RPM (`UShort`, Big-Endian)
+    * `val[2]`: Vehicle Speed (`UByte`, km/h)
+    * `val[3]`: Throttle Opening (`0..100%`)
+    * `val[4]`: Coolant Temperature (`°C`)
+    * `val[7]`: Intake Airbox Temperature (`°C`)
+  * **TLV 2 (`0x0048`)**: Meter Distance / Odometer (Length: 4 bytes / `0x04`)
+    * `val[0..3]`: Total vehicle odometer in units of **0.1 km** (`UInt32`, Big-Endian).
+    * *Example*: `00 00 0A 43` = `0x0A43` = `2627` -> `2627 / 10.0` = **262.7 km** (displayed as **263 km** on the meter).
+  * `data[45]`: Rolling Sequence Counter (`0..255`)
+  * `data[46]`: Two's complement Checksum
+
+### 5.2 CAN Bus Status Frame (`0x56`) [CCU -> Phone]
+* **Length**: 30 bytes.
+* **Format**: Multi-CAN ID TLVs containing warning indicators, fuel injection volume, and malfunction status.
+* **IDs**:
+  * `0x020A` (len=2): Warning lamp & indicator states
+  * `0x0216` (len=4): Fuel injection & consumption rate
+  * `0x023A` (len=2), `0x023E` (len=2), `0x0245` (len=1)
+  * End: Rolling Counter + Checksum
+
+---
+
+## 6. Dash Meter Icons & Display Behavior
+
+* **Solid Phone Icon**: Indicates that the phone is **successfully connected via Bluetooth** to the CCU. The CCU commands the meter LCD to light up the phone silhouette steadily whenever NUS notifications are active.
+* **Blinking Phone Icon**: Indicates an **incoming phone call** (`notificationUpper` bits 7-6 set to `1`).
+* **Message Icon**: Indicates unread SMS or App alerts (`notificationUpper` bit 0 or `notificationLower` bit 6 set to `1`).
 
 | Slot Key | Metric | Type | Scale / Units | Description |
 | :---: | :--- | :---: | :---: | :--- |

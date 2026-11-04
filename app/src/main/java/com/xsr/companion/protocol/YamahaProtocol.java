@@ -1,5 +1,6 @@
 package com.xsr.companion.protocol;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 public final class YamahaProtocol {
@@ -41,8 +42,98 @@ public final class YamahaProtocol {
     }
 
     /**
+     * Builds 60-byte Packet 0x7F00 (SCCU1AuthEnt):
+     * Phone initiates session authentication with CCU.
+     * CCU validates CCUID, passkey, and updateBondingFlag, then responds with Packet 0x7F01.
+     */
+    public static byte[] buildAuthPacket(String ccuId, String passKey, String phoneUuid, boolean isFirstConnection, int counter) {
+        byte[] packet = new byte[60];
+        packet[0] = START_BYTE_AUTH; // 0xAA (-86)
+        packet[1] = GROUP_COMMON;    // 0x01
+        packet[2] = 0x7F;            // ID High
+        packet[3] = 0x00;            // ID Low (0x7F00)
+        packet[4] = 0x35;            // Length: 53 bytes (0x35)
+
+        // CCU ID: 14 ASCII bytes (offset 5..18)
+        String cleanCcu = cleanCcuId(ccuId);
+        byte[] ccuBytes = cleanCcu.getBytes(StandardCharsets.US_ASCII);
+        for (int i = 0; i < 14; i++) {
+            packet[5 + i] = (i < ccuBytes.length) ? ccuBytes[i] : (byte) '0';
+        }
+
+        // PassKey: 6 ASCII bytes (offset 19..24)
+        String cleanPass = (passKey != null && !passKey.trim().isEmpty()) ? passKey.trim() : "000000";
+        if (cleanPass.length() > 6) {
+            cleanPass = cleanPass.substring(cleanPass.length() - 6);
+        }
+        byte[] passBytes = cleanPass.getBytes(StandardCharsets.US_ASCII);
+        for (int i = 0; i < 6; i++) {
+            packet[19 + i] = (i < passBytes.length) ? passBytes[i] : (byte) '0';
+        }
+
+        // Phone UUID: 32 ASCII bytes (offset 25..56)
+        String cleanUuid = (phoneUuid != null && !phoneUuid.trim().isEmpty()) ? phoneUuid.trim().replace("-", "") : "";
+        byte[] uuidBytes = cleanUuid.getBytes(StandardCharsets.US_ASCII);
+        for (int i = 0; i < 32; i++) {
+            packet[25 + i] = (i < uuidBytes.length) ? uuidBytes[i] : (byte) '0';
+        }
+
+        // updateBondingFlag: 1 byte (offset 57) - 1 for initial pairing, 0 for reconnecting to bonded CCU
+        packet[57] = (byte) (isFirstConnection ? 0x01 : 0x00);
+
+        // Counter: 1 byte (offset 58)
+        packet[58] = (byte) (counter & 0xFF);
+
+        // Checksum: 1 byte (offset 59) over offsets 0..58
+        packet[59] = calculateChecksum(packet, 59);
+
+        return packet;
+    }
+
+    public static String cleanCcuId(String ccuId) {
+        if (ccuId == null) return "00000000000000";
+        String s = ccuId.trim();
+        if (s.startsWith(PREFIX_YSCCU)) {
+            s = s.substring(PREFIX_YSCCU.length());
+        } else if (s.startsWith(PREFIX_YCCU)) {
+            s = s.substring(PREFIX_YCCU.length());
+        }
+        if (s.length() < 14) {
+            StringBuilder sb = new StringBuilder();
+            while (sb.length() + s.length() < 14) {
+                sb.append('0');
+            }
+            sb.append(s);
+            s = sb.toString();
+        } else if (s.length() > 14) {
+            s = s.substring(0, 14);
+        }
+        return s;
+    }
+
+    /**
+     * Checks if incoming packet is 0x7F01 (SCCU1StartProcEnt) from CCU.
+     * Returns:
+     *   1 if CCU confirmed start processing (auth accepted),
+     *   0 if CCU rejected start processing (auth error),
+     *  -1 if packet is not 0x7F01.
+     */
+    public static int parseStartProcessingAck(byte[] data) {
+        if (data == null || data.length < 8) return -1;
+        if (data[0] == START_BYTE_5A && data[1] == GROUP_COMMON
+                && (data[2] & 0xFF) == 0x7F && (data[3] & 0xFF) == 0x01) {
+            if (!verifyChecksum(data)) {
+                return -1;
+            }
+            int flag = data[5] & 0xFF;
+            return (flag == 1) ? 1 : 0;
+        }
+        return -1;
+    }
+
+    /**
      * Builds 8-byte Packet 0x7F01 (SCCU1StartProcEnt):
-     * Commands the CCU to start continuous periodic telemetry transmission (Local + CAN frames).
+     * Legacy streaming trigger packet.
      */
     public static byte[] buildStartStreamingPacket(int counter) {
         byte[] packet = new byte[8];
@@ -134,41 +225,47 @@ public final class YamahaProtocol {
         int frameId = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
 
         // 1. Local Real-Time Telemetry Frame (0x55, 0x5A, 0x0148, 0x0200)
-        // CCU sends 0x55 (85) with 0x0148 or 0x0200 records for ICE bikes
+        // CCU sends 0x55 (85) containing TLV records:
+        // TLV 0x0001 (len=33): ECU sensors (RPM, speed, throttle, coolant, air temp)
+        // TLV 0x0048 (len=4): Meter distance / Odometer in 0.1km (Big Endian)
         if (startByte == START_BYTE_55 || startByte == START_BYTE_5A || frameId == 0x0148 || frameId == 0x0200) {
-            int offset = 5;
-            if (data.length >= 16) {
-                // RPM: 2 bytes (UShort)
-                target.engineRpm = ((data[offset] & 0xFF) << 8) | (data[offset + 1] & 0xFF);
-                // Speed: 1 byte (UByte, km/h)
-                target.speedKmh = data[offset + 2] & 0xFF;
-                // Throttle: 1 byte (0-100 or 0-255 scaled)
-                int rawThrottle = data[offset + 3] & 0xFF;
-                target.throttlePct = Math.min(100.0, rawThrottle > 100 ? (rawThrottle * 100.0 / 255.0) : rawThrottle);
-                // Coolant temp: 1 byte (°C, offset -40 if raw or direct °C)
-                int rawTemp = data[offset + 4] & 0xFF;
-                target.coolantTemp = (rawTemp > 160) ? (rawTemp - 40) : rawTemp;
-                // Air temp: 1 byte (°C)
-                if (offset + 5 < data.length) {
-                    target.airTemp = data[offset + 5] & 0xFF;
+            int i = 2; // skip start byte and group byte
+            while (i + 3 <= data.length - 2) { // reserve 2 bytes for counter + checksum
+                int tlvId = ((data[i] & 0xFF) << 8) | (data[i + 1] & 0xFF);
+                int tlvLen = data[i + 2] & 0xFF;
+                int valOffset = i + 3;
+                if (valOffset + tlvLen > data.length - 2) {
+                    break;
                 }
-                // DTC count & code
-                if (offset + 8 < data.length) {
-                    target.dtcCount = data[offset + 6] & 0xFF;
-                    target.dtcCode = ((data[offset + 7] & 0xFF) << 8) | (data[offset + 8] & 0xFF);
-                }
-                // Odometer (4 bytes in 0.1km or 1km)
-                if (offset + 12 < data.length) {
-                    long rawOdo = ((long)(data[offset + 9] & 0xFF) << 24)
-                                | ((long)(data[offset + 10] & 0xFF) << 16)
-                                | ((long)(data[offset + 11] & 0xFF) << 8)
-                                | (long)(data[offset + 12] & 0xFF);
-                    if (rawOdo > 0 && rawOdo < 10000000L) {
-                        target.odometerKm = rawOdo > 999999 ? (rawOdo / 10.0) : rawOdo;
+
+                if (tlvId == 0x0001 && tlvLen >= 5) {
+                    // Engine RPM: 2 bytes (UShort)
+                    target.engineRpm = ((data[valOffset] & 0xFF) << 8) | (data[valOffset + 1] & 0xFF);
+                    // Speed: 1 byte (km/h)
+                    target.speedKmh = data[valOffset + 2] & 0xFF;
+                    // Throttle: 1 byte (0-100% or 0-255 scaled)
+                    int rawThrottle = data[valOffset + 3] & 0xFF;
+                    target.throttlePct = Math.min(100.0, rawThrottle > 100 ? (rawThrottle * 100.0 / 255.0) : rawThrottle);
+                    // Coolant temp: 1 byte (°C)
+                    int rawTemp = data[valOffset + 4] & 0xFF;
+                    target.coolantTemp = (rawTemp > 160) ? (rawTemp - 40) : rawTemp;
+                    // Intake air temp: byte 7 (°C)
+                    if (tlvLen > 7) {
+                        target.airTemp = data[valOffset + 7] & 0xFF;
+                    }
+                } else if (tlvId == 0x0048 && tlvLen >= 4) {
+                    // Meter Odometer: 4 bytes in 0.1km (e.g. 0x00000A43 = 2627 -> 262.7 km)
+                    long rawDist = ((long)(data[valOffset] & 0xFF) << 24)
+                                 | ((long)(data[valOffset + 1] & 0xFF) << 16)
+                                 | ((long)(data[valOffset + 2] & 0xFF) << 8)
+                                 | (long)(data[valOffset + 3] & 0xFF);
+                    if (rawDist > 0 && rawDist < 10000000L) {
+                        target.odometerKm = rawDist / 10.0;
                     }
                 }
-                return true;
+                i += 3 + tlvLen;
             }
+            return true;
         }
 
         // 2. CAN Frame (0x56 or 0x0300): Warning lamp, fuel injection, malfunction

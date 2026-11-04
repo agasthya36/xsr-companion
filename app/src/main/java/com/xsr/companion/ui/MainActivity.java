@@ -218,6 +218,28 @@ public class MainActivity extends Activity {
     }
 
     private void setupListeners() {
+        tvDeviceName.setOnClickListener(v -> {
+            String currentPasskey = prefs.getString(XsrBleService.PREF_PASSKEY, "");
+            android.widget.EditText input = new android.widget.EditText(this);
+            input.setText(currentPasskey);
+            input.setHint("VIN / Chassis Number or 6-digit PIN");
+            input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("CCU Passkey / VIN")
+                    .setMessage("Enter your full Chassis / VIN number or 6-digit CCU passkey:")
+                    .setView(input)
+                    .setPositiveButton("Save", (dialog, which) -> {
+                        String pass = input.getText().toString().trim();
+                        if (pass.length() > 0) {
+                            prefs.edit().putString(XsrBleService.PREF_PASSKEY, pass).apply();
+                            Toast.makeText(this, "Saved: " + pass, Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+
         btnScanConnect.setOnClickListener(v -> {
             Intent intent = new Intent(this, XsrBleService.class);
             intent.setAction(XsrBleService.ACTION_START_SCAN);

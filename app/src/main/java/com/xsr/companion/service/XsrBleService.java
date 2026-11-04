@@ -51,7 +51,10 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressLint("MissingPermission")
 public class XsrBleService extends Service {
@@ -98,6 +101,8 @@ public class XsrBleService extends Service {
     public static final String PREF_PARKED_LON = "parked_longitude";
     public static final String PREF_PARKED_TIME = "parked_timestamp";
     public static final String PREF_LATEST_BIKE_ODO = "pref_latest_bike_odo";
+    public static final String PREF_PASSKEY = "pref_passkey";
+    public static final String PREF_PHONE_UUID = "pref_phone_uuid";
 
     // Public static state for instant Activity UI synchronization
     public static volatile boolean sIsConnected = false;
@@ -119,6 +124,21 @@ public class XsrBleService extends Service {
 
     private boolean isScanning = false;
     private boolean isConnected = false;
+    private boolean isHandshakeComplete = false;
+    private final ConcurrentLinkedQueue<byte[]> writeQueue = new ConcurrentLinkedQueue<>();
+    private final AtomicBoolean isWriting = new AtomicBoolean(false);
+    private int authCandidateIndex = 0;
+    private final List<AuthCandidate> authCandidates = new ArrayList<>();
+
+    private static class AuthCandidate {
+        final String passkey;
+        final boolean updateBondingFlag;
+        AuthCandidate(String passkey, boolean updateBondingFlag) {
+            this.passkey = passkey;
+            this.updateBondingFlag = updateBondingFlag;
+        }
+    }
+
     private int currentBatteryLevel = 100;
     private int packetCount = 0;
     private String currentDeviceName = "No CCU Paired";
@@ -173,6 +193,10 @@ public class XsrBleService extends Service {
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        if (!prefs.contains(PREF_PHONE_UUID)) {
+            String uuid = UUID.randomUUID().toString().replace("-", "");
+            prefs.edit().putString(PREF_PHONE_UUID, uuid).apply();
+        }
         rideDb = new RideDatabaseHelper(this);
         maintenanceManager = new MaintenanceManager(this);
         fuelManager = new FuelManager(this);
@@ -470,6 +494,11 @@ public class XsrBleService extends Service {
     private void disconnectGatt() {
         stopPeriodicSync();
         stopRideTracking();
+        writeQueue.clear();
+        isWriting.set(false);
+        isHandshakeComplete = false;
+        authCandidates.clear();
+        authCandidateIndex = 0;
         if (bluetoothGatt != null) {
             try {
                 bluetoothGatt.disconnect();
@@ -487,14 +516,18 @@ public class XsrBleService extends Service {
      * 1. STATE_CONNECTED -> requestConnectionPriority(HIGH) -> 300ms delay -> discoverServices()
      * 2. onServicesDiscovered -> setCharacteristicNotification(6E400003) -> writeDescriptor(0x2902)
      * 3. onDescriptorWrite -> requestMtu(512)
-     * 4. onMtuChanged -> sendStartStreamingCommand(0x7F01) -> startRideTracking() -> startPeriodicSync()
-     * 5. onCharacteristicChanged -> parseIncomingPacket() -> broadcastTelemetry()
+     * 4. onMtuChanged -> sendAuthPacket(0x7F00)
+     * 5. onCharacteristicChanged -> receive 0x7F01 (startProcessingFlag=1) -> startRideTracking() -> startPeriodicSync()
+     * 6. onCharacteristicChanged -> parseIncomingPacket(0x55, 0x56) -> broadcastTelemetry()
      */
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
+                isHandshakeComplete = false;
+                writeQueue.clear();
+                isWriting.set(false);
                 packetCount = 0;
                 broadcastStatus("Connected to CCU. Discovering services...");
 
@@ -514,6 +547,9 @@ public class XsrBleService extends Service {
 
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 isConnected = false;
+                isHandshakeComplete = false;
+                writeQueue.clear();
+                isWriting.set(false);
                 stopPeriodicSync();
                 rxCharacteristic = null;
 
@@ -573,18 +609,34 @@ public class XsrBleService extends Service {
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-            broadcastStatus("MTU " + mtu + " configured. Starting live stream...");
+            isHandshakeComplete = false;
+            String devName = gatt.getDevice().getName();
+            String ccuId = YamahaProtocol.cleanCcuId(devName != null ? devName : currentDeviceName);
 
-            // Command CCU to start streaming telemetry
-            sendStartStreamingCommand();
+            Log.i(TAG, "onMtuChanged: mtu=" + mtu + ", status=" + status + ", ccuId=" + ccuId);
+            broadcastStatus("MTU " + mtu + " negotiated. Authenticating with CCU...");
 
-            // Start zero-click ride tracking!
-            startRideTracking();
+            prepareAuthCandidates(ccuId);
+            trySendNextAuth();
 
-            // Start periodic meter telemetry sync
-            startPeriodicSync();
+            // Watchdog fallback: if CCU sends telemetry directly or misses 0x7F01, start sync after 4.5s
+            mainHandler.postDelayed(() -> {
+                if (isConnected && !isHandshakeComplete) {
+                    Log.w(TAG, "Auth response watchdog timeout (4.5s). Starting periodic sync fallback.");
+                    isHandshakeComplete = true;
+                    broadcastStatus("Connected & Syncing with Meter");
+                    startRideTracking();
+                    startPeriodicSync();
+                }
+            }, 4500);
+        }
 
-            broadcastStatus("Connected & Syncing with Meter");
+        @Override
+        public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
+            Log.d(TAG, "onCharacteristicWrite status=" + status);
+            if (isWriting.compareAndSet(true, false)) {
+                processNextWrite();
+            }
         }
 
         @Override
@@ -605,8 +657,93 @@ public class XsrBleService extends Service {
         }
     };
 
+    private void prepareAuthCandidates(String ccuId) {
+        authCandidates.clear();
+        authCandidateIndex = 0;
+
+        String userPass = prefs.getString(PREF_PASSKEY, "").trim();
+        String last6Ccu = ccuId.length() >= 6 ? ccuId.substring(ccuId.length() - 6) : "826927";
+
+        // 1. If user set custom passkey / vehicle VIN
+        if (!userPass.isEmpty()) {
+            if (userPass.length() > 6) {
+                // VIN / Chassis number entered (e.g. 17 chars):
+                // Candidate A: Last 6 digits/characters (the serial number)
+                String last6 = userPass.substring(userPass.length() - 6);
+                authCandidates.add(new AuthCandidate(last6, true));
+                authCandidates.add(new AuthCandidate(last6, false));
+                // Candidate B: First 6 characters
+                String first6 = userPass.substring(0, 6);
+                authCandidates.add(new AuthCandidate(first6, true));
+            } else {
+                authCandidates.add(new AuthCandidate(userPass, true));
+                authCandidates.add(new AuthCandidate(userPass, false));
+            }
+        }
+
+        // 2. Last 6 digits of CCUID (826927) with updateBondingFlag=1 (registers new phone UUID)
+        authCandidates.add(new AuthCandidate(last6Ccu, true));
+
+        // 3. Last 6 digits of CCUID (826927) with updateBondingFlag=0
+        authCandidates.add(new AuthCandidate(last6Ccu, false));
+
+        // 4. Default 000000 with updateBondingFlag=1
+        authCandidates.add(new AuthCandidate("000000", true));
+
+        // 5. Standard 123456 with updateBondingFlag=1
+        authCandidates.add(new AuthCandidate("123456", true));
+    }
+
+    private void trySendNextAuth() {
+        if (bluetoothGatt == null || !isConnected) return;
+        if (authCandidateIndex >= authCandidates.size()) {
+            broadcastStatus("All PIN candidates rejected. Tap CCU Name to enter PIN.");
+            return;
+        }
+
+        AuthCandidate candidate = authCandidates.get(authCandidateIndex++);
+        String devName = bluetoothGatt.getDevice().getName();
+        String ccuId = YamahaProtocol.cleanCcuId(devName != null ? devName : currentDeviceName);
+        String phoneUuid = prefs.getString(PREF_PHONE_UUID, "");
+
+        broadcastStatus("Authenticating CCU (PIN " + candidate.passkey + ", bond=" + (candidate.updateBondingFlag ? "1" : "0") + ")...");
+        Log.i(TAG, "Trying Auth Candidate [" + authCandidateIndex + "/" + authCandidates.size() + "]: PIN=" + candidate.passkey + ", bondFlag=" + candidate.updateBondingFlag);
+
+        byte[] authPacket = YamahaProtocol.buildAuthPacket(ccuId, candidate.passkey, phoneUuid, candidate.updateBondingFlag, syncCounter++);
+        enqueueWrite(authPacket);
+    }
+
     private void handleCharacteristicUpdate(byte[] data) {
         if (data == null || data.length == 0) return;
+
+        // 1. Check if packet is CCU Auth response 0x7F01 (SCCU1StartProcEnt)
+        int startProcAck = YamahaProtocol.parseStartProcessingAck(data);
+        if (startProcAck != -1) {
+            if (startProcAck == 1) {
+                isHandshakeComplete = true;
+                AuthCandidate successfulCandidate = authCandidateIndex > 0 ? authCandidates.get(authCandidateIndex - 1) : null;
+                if (successfulCandidate != null) {
+                    prefs.edit().putString(PREF_PASSKEY, successfulCandidate.passkey).apply();
+                    Log.i(TAG, "CCU Authentication ACCEPTED! Saved working passkey: " + successfulCandidate.passkey);
+                }
+                broadcastStatus("CCU Authenticated! Live streaming active.");
+                startRideTracking();
+                startPeriodicSync();
+            } else {
+                Log.w(TAG, "CCU Auth candidate rejected (flag=0). Retrying next candidate...");
+                mainHandler.postDelayed(this::trySendNextAuth, 120);
+            }
+            return;
+        }
+
+        // 2. If telemetry packet arrives, mark handshake complete
+        if (!isHandshakeComplete && (data[0] == YamahaProtocol.START_BYTE_55 || data[0] == YamahaProtocol.START_BYTE_56)) {
+            isHandshakeComplete = true;
+            broadcastStatus("Connected & Syncing with Meter");
+            startRideTracking();
+            startPeriodicSync();
+        }
+
         boolean updated = YamahaProtocol.parseIncomingPacket(data, latestTelemetry);
         if (updated) {
             packetCount++;
@@ -674,8 +811,23 @@ public class XsrBleService extends Service {
         }
     }
 
-    private void writeCharacteristicData(byte[] packet) {
-        if (bluetoothGatt == null || rxCharacteristic == null || packet == null) return;
+    private void enqueueWrite(byte[] packet) {
+        if (packet == null) return;
+        writeQueue.add(packet);
+        processNextWrite();
+    }
+
+    private synchronized void processNextWrite() {
+        if (isWriting.get()) return;
+        byte[] packet = writeQueue.poll();
+        if (packet == null) return;
+
+        if (bluetoothGatt == null || rxCharacteristic == null) {
+            writeQueue.clear();
+            return;
+        }
+
+        isWriting.set(true);
         try {
             rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
             int res = -1;
@@ -689,7 +841,17 @@ public class XsrBleService extends Service {
             Log.d(TAG, "TX Packet (" + packet.length + " bytes, res=" + res + "): " + bytesToHex(packet));
         } catch (Exception e) {
             Log.e(TAG, "Write error: " + e.getMessage());
+            isWriting.set(false);
+            mainHandler.postDelayed(this::processNextWrite, 50);
+            return;
         }
+
+        // Fallback watchdog: unlock after 50ms if onCharacteristicWrite is not invoked by OS
+        mainHandler.postDelayed(() -> {
+            if (isWriting.compareAndSet(true, false)) {
+                processNextWrite();
+            }
+        }, 50);
     }
 
     private static String bytesToHex(byte[] bytes) {
@@ -703,7 +865,7 @@ public class XsrBleService extends Service {
 
     private void sendStartStreamingCommand() {
         byte[] packet = YamahaProtocol.buildStartStreamingPacket(syncCounter++);
-        writeCharacteristicData(packet);
+        enqueueWrite(packet);
     }
 
     private void startRideTracking() {
@@ -800,7 +962,7 @@ public class XsrBleService extends Service {
                 syncCounter++
         );
 
-        writeCharacteristicData(packet);
+        enqueueWrite(packet);
     }
 
     private void sendNotificationSync() {
@@ -812,7 +974,7 @@ public class XsrBleService extends Service {
                 syncCounter++
         );
 
-        writeCharacteristicData(packet);
+        enqueueWrite(packet);
     }
 
     private void saveParkedLocation() {

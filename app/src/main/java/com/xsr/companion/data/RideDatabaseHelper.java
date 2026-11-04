@@ -212,12 +212,6 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
             }
         }
 
-        // If moved less than 50 meters, discard (e.g. key turned on then off in garage)
-        if (totalDistanceKm < 0.05 && maxSpeed < 5) {
-            deleteRide(rideId);
-            return false;
-        }
-
         Cursor c = db.query(TABLE_RIDES, new String[]{COL_START_TIME}, COL_ID + "=?", new String[]{String.valueOf(rideId)}, null, null, null);
         long startTime = endTime;
         if (c != null && c.moveToFirst()) {
@@ -226,6 +220,12 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         }
 
         int durationSec = (int) Math.max(1, (endTime - startTime) / 1000);
+
+        // Discard only completely empty/instant noise (e.g. key flicked on and off in < 10s with 0 movement)
+        if (points.isEmpty() || (totalDistanceKm < 0.01 && maxSpeed < 2 && durationSec < 10)) {
+            deleteRide(rideId);
+            return false;
+        }
         double avgSpeed = points.isEmpty() ? 0.0 : (double) totalSpeed / points.size();
         int avgRpm = points.isEmpty() ? 0 : (int) (totalRpm / points.size());
 
@@ -270,7 +270,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     public List<RideSummary> getRecentRides(int limit) {
         List<RideSummary> list = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.query(TABLE_RIDES, null, COL_DISTANCE_KM + ">0", null, null, null, COL_START_TIME + " DESC", String.valueOf(limit));
+        Cursor c = db.query(TABLE_RIDES, null, COL_END_TIME + ">0", null, null, null, COL_START_TIME + " DESC", String.valueOf(limit));
         if (c != null) {
             while (c.moveToNext()) {
                 RideSummary s = new RideSummary();
