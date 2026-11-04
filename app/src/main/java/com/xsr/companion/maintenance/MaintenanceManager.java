@@ -3,26 +3,36 @@ package com.xsr.companion.maintenance;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.xsr.companion.data.RideDatabaseHelper;
+import com.xsr.companion.settings.SettingsManager;
+
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MaintenanceManager {
 
     private static final String PREF_NAME = "xsr_maintenance_prefs";
     private static final String KEY_CURRENT_ODO = "current_odometer_km";
+    private static final String KEY_LAST_PREFIX = "last_service_";
 
     public static class ServiceItem {
         public final String id;
         public final String title;
         public final String description;
-        public final int intervalKm;
+        public final int defaultIntervalKm;
+        public int intervalKm;
         public double lastServiceOdoKm;
+        public long lastServiceTime;
 
-        public ServiceItem(String id, String title, String description, int intervalKm, double lastServiceOdoKm) {
+        public ServiceItem(String id, String title, String description,
+                           int defaultIntervalKm, double lastServiceOdoKm) {
             this.id = id;
             this.title = title;
             this.description = description;
-            this.intervalKm = intervalKm;
+            this.defaultIntervalKm = defaultIntervalKm;
+            this.intervalKm = defaultIntervalKm;
             this.lastServiceOdoKm = lastServiceOdoKm;
         }
 
@@ -35,6 +45,7 @@ public class MaintenanceManager {
         }
 
         public int getProgressPercent(double currentOdo) {
+            if (intervalKm <= 0) return 0;
             double elapsed = getElapsedKm(currentOdo);
             return (int) Math.min(100, Math.max(0, (elapsed * 100.0) / intervalKm));
         }
@@ -45,67 +56,205 @@ public class MaintenanceManager {
 
         public boolean isDueSoon(double currentOdo) {
             double rem = getRemainingKm(currentOdo);
-            return rem > 0 && rem <= (intervalKm * 0.1); // within 10% or 100km
+            return rem > 0 && rem <= Math.max(50, intervalKm * 0.1);
         }
     }
 
+    private final Context context;
     private final SharedPreferences prefs;
+    private final SettingsManager settings;
+    private final RideDatabaseHelper db;
     private final List<ServiceItem> items = new ArrayList<>();
     private double currentOdometerKm = 0.0;
 
     public MaintenanceManager(Context context) {
-        prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        currentOdometerKm = prefs.getFloat(KEY_CURRENT_ODO, 0.0f);
+        this.context = context.getApplicationContext();
+        this.prefs = this.context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        this.settings = SettingsManager.get(this.context);
+        this.db = RideDatabaseHelper.getInstance(this.context);
+        this.currentOdometerKm = prefs.getFloat(KEY_CURRENT_ODO, 0.0f);
         initDefaultItems();
+        loadIntervals();
     }
 
     private void initDefaultItems() {
         items.clear();
-        items.add(new ServiceItem("chain_lube", "Drive Chain Clean & Lube", "Clean slack and apply chain lubricant", 500, getSavedServiceOdo("chain_lube", 0.0)));
-        items.add(new ServiceItem("engine_oil", "Engine Oil (Yamalube 10W-40)", "Replace oil (850ml) for engine longevity", 3000, getSavedServiceOdo("engine_oil", 0.0)));
-        items.add(new ServiceItem("oil_filter", "Oil Filter Element", "Replace paper oil filter insert", 6000, getSavedServiceOdo("oil_filter", 0.0)));
-        items.add(new ServiceItem("brake_pads", "Brake Pads & Fluid", "Check front and rear pad wear groove", 5000, getSavedServiceOdo("brake_pads", 0.0)));
-        items.add(new ServiceItem("spark_plug", "Spark Plug (NGK MR8E9)", "Replace spark plug and set gap 0.8-0.9mm", 10000, getSavedServiceOdo("spark_plug", 0.0)));
-        items.add(new ServiceItem("air_filter", "Air Cleaner Element", "Replace viscous paper filter element", 12000, getSavedServiceOdo("air_filter", 0.0)));
-        items.add(new ServiceItem("coolant", "Coolant Replacement", "Flush and refill radiator & reservoir", 20000, getSavedServiceOdo("coolant", 0.0)));
+        items.add(new ServiceItem("chain_lube", "Drive chain clean & lube",
+                "Clean, check slack and lubricate the chain.", 500,
+                getSavedServiceOdo("chain_lube")));
+        items.add(new ServiceItem("engine_oil", "Engine oil",
+                "Yamalube 10W-40, 850 ml. Replace with filter service.", 3000,
+                getSavedServiceOdo("engine_oil")));
+        items.add(new ServiceItem("oil_filter", "Oil filter element",
+                "Replace the paper filter insert.", 6000,
+                getSavedServiceOdo("oil_filter")));
+        items.add(new ServiceItem("brake_pads", "Brake pads & fluid",
+                "Check pad wear grooves and fluid level.", 5000,
+                getSavedServiceOdo("brake_pads")));
+        items.add(new ServiceItem("spark_plug", "Spark plug",
+                "NGK MR8E9, gap 0.8–0.9 mm.", 10000,
+                getSavedServiceOdo("spark_plug")));
+        items.add(new ServiceItem("air_filter", "Air cleaner element",
+                "Replace the viscous paper filter element.", 12000,
+                getSavedServiceOdo("air_filter")));
+        items.add(new ServiceItem("coolant", "Coolant replacement",
+                "Flush and refill radiator and reservoir.", 20000,
+                getSavedServiceOdo("coolant")));
     }
 
-    private double getSavedServiceOdo(String id, double defaultVal) {
-        return prefs.getFloat("last_service_" + id, (float) defaultVal);
+    private double getSavedServiceOdo(String id) {
+        return prefs.getFloat(KEY_LAST_PREFIX + id, 0.0f);
     }
 
-    public synchronized void updateOdometer(double odoKm) {
-        if (odoKm > 0) {
-            currentOdometerKm = odoKm;
-            prefs.edit().putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm).apply();
+    private void loadIntervals() {
+        for (ServiceItem item : items) {
+            item.intervalKm = settings.getMaintenanceIntervalKm(item.id, item.defaultIntervalKm);
+            item.lastServiceTime = prefs.getLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
         }
     }
 
+    public synchronized void updateOdometer(double odoKm) {
+        if (odoKm <= 0) return;
+        if (Math.abs(odoKm - currentOdometerKm) < 0.05) return;
+        currentOdometerKm = odoKm;
+        prefs.edit().putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm).apply();
+        baselineIfNeeded(odoKm);
+    }
+
+    /**
+     * On a used motorcycle every item would otherwise look overdue because the
+     * last service odometer is unknown. On first odometer sync we baseline all
+     * items to the current odometer; the rider can then adjust intervals or log
+     * real services as they go.
+     */
+    private void baselineIfNeeded(double odoKm) {
+        if (settings.isMaintenanceBaselined() || odoKm <= 0) return;
+        SharedPreferences.Editor editor = prefs.edit();
+        for (ServiceItem item : items) {
+            String key = KEY_LAST_PREFIX + item.id;
+            // Treat a stored 0 as "unknown" too: a service logged before the
+            // first odometer sync would otherwise make every item look overdue.
+            if (!prefs.contains(key) || prefs.getFloat(key, 0.0f) <= 0.0f) {
+                item.lastServiceOdoKm = odoKm;
+                editor.putFloat(key, (float) odoKm);
+            }
+        }
+        editor.apply();
+        settings.setMaintenanceBaselined();
+    }
+
     public synchronized double getCurrentOdometer() {
+        // The BLE service owns odometer updates and writes them to prefs; this
+        // instance may have been created before that write, so prefer the
+        // freshest persisted value.
+        float saved = prefs.getFloat(KEY_CURRENT_ODO, 0.0f);
+        if (saved > currentOdometerKm) currentOdometerKm = saved;
         return currentOdometerKm;
     }
 
     public synchronized List<ServiceItem> getItems() {
+        loadIntervals();
+        updateTimes();
         return new ArrayList<>(items);
     }
 
-    public synchronized void markServiced(String id) {
+    public synchronized ServiceItem getItem(String id) {
+        loadIntervals();
+        updateTimes();
         for (ServiceItem item : items) {
-            if (item.id.equals(id)) {
-                item.lastServiceOdoKm = currentOdometerKm;
-                prefs.edit().putFloat("last_service_" + id, (float) currentOdometerKm).apply();
-                break;
-            }
+            if (item.id.equals(id)) return item;
+        }
+        return null;
+    }
+
+    private void updateTimes() {
+        for (ServiceItem item : items) {
+            item.lastServiceTime = prefs.getLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
+        }
+    }
+
+    public synchronized Map<String, ServiceItem> getItemsById() {
+        Map<String, ServiceItem> map = new LinkedHashMap<>();
+        for (ServiceItem item : getItems()) map.put(item.id, item);
+        return map;
+    }
+
+    public synchronized void markServiced(String id, String notes, double cost) {
+        markServiced(id, getCurrentOdometer(), notes, cost);
+    }
+
+    /**
+     * Logs a service at an explicit odometer, which keeps the stored value in
+     * sync with the number the rider saw in the dialog even if the service is
+     * still flushing a fresher reading.
+     */
+    public synchronized void markServiced(String id, double odoKm, String notes, double cost) {
+        ServiceItem item = getItem(id);
+        if (item == null) return;
+        double serviceOdo = odoKm > 0 ? odoKm : getCurrentOdometer();
+        item.lastServiceOdoKm = serviceOdo;
+        long now = System.currentTimeMillis();
+        prefs.edit()
+                .putFloat(KEY_LAST_PREFIX + id, (float) serviceOdo)
+                .putLong(KEY_LAST_PREFIX + id + "_time", now)
+                .apply();
+        db.insertServiceLog(id, now, serviceOdo, notes, cost);
+    }
+
+    public synchronized void markServiced(String id) {
+        markServiced(id, null, 0.0);
+    }
+
+    public synchronized void setInterval(String id, int km) {
+        settings.setMaintenanceIntervalKm(id, km);
+        for (ServiceItem item : items) {
+            if (item.id.equals(id)) item.intervalKm = Math.max(50, km);
         }
     }
 
     public synchronized int getDueItemCount() {
         int count = 0;
         for (ServiceItem item : items) {
-            if (item.isOverdue(currentOdometerKm)) {
-                count++;
-            }
+            if (item.isOverdue(currentOdometerKm)) count++;
         }
         return count;
+    }
+
+    public synchronized int getDueSoonItemCount() {
+        int count = 0;
+        for (ServiceItem item : items) {
+            if (item.isDueSoon(currentOdometerKm)) count++;
+        }
+        return count;
+    }
+
+    public synchronized ServiceItem getNextDue() {
+        ServiceItem next = null;
+        double best = Double.MAX_VALUE;
+        for (ServiceItem item : items) {
+            double rem = item.getRemainingKm(currentOdometerKm);
+            if (rem < best) {
+                best = rem;
+                next = item;
+            }
+        }
+        return next;
+    }
+
+    public List<RideDatabaseHelper.ServiceLogEntry> getHistory(int limit) {
+        return db.getServiceLog(limit);
+    }
+
+    public static String displayName(String id) {
+        switch (id) {
+            case "chain_lube": return "Chain lube";
+            case "engine_oil": return "Engine oil";
+            case "oil_filter": return "Oil filter";
+            case "brake_pads": return "Brake pads";
+            case "spark_plug": return "Spark plug";
+            case "air_filter": return "Air filter";
+            case "coolant": return "Coolant";
+            default: return id;
+        }
     }
 }

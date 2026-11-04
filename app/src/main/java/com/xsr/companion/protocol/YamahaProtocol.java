@@ -222,13 +222,15 @@ public final class YamahaProtocol {
         target.timestamp = System.currentTimeMillis();
 
         byte startByte = data[0];
-        int frameId = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
 
-        // 1. Local Real-Time Telemetry Frame (0x55, 0x5A, 0x0148, 0x0200)
+        // 1. Local Real-Time Telemetry Frame (0x55)
         // CCU sends 0x55 (85) containing TLV records:
         // TLV 0x0001 (len=33): ECU sensors (RPM, speed, throttle, coolant, air temp)
         // TLV 0x0048 (len=4): Meter distance / Odometer in 0.1km (Big Endian)
-        if (startByte == START_BYTE_55 || startByte == START_BYTE_5A || frameId == 0x0148 || frameId == 0x0200) {
+        // Only 0x55 is a local telemetry frame; matching arbitrary bytes at
+        // offsets 2..3 would misroute CAN frames whose payload happens to
+        // contain 0x0200.
+        if (startByte == START_BYTE_55) {
             int i = 2; // skip start byte and group byte
             while (i + 3 <= data.length - 2) { // reserve 2 bytes for counter + checksum
                 int tlvId = ((data[i] & 0xFF) << 8) | (data[i + 1] & 0xFF);
@@ -268,16 +270,28 @@ public final class YamahaProtocol {
             return true;
         }
 
-        // 2. CAN Frame (0x56 or 0x0300): Warning lamp, fuel injection, malfunction
-        if (startByte == START_BYTE_56 || frameId == 0x0300 || data.length >= 8) {
+        // 2. CAN Frame (0x56): warning lamp, fuel injection, DTCs
+        if (startByte == START_BYTE_56) {
+            // Short (2-byte) CAN id layout, used by the warning/injection records.
             for (int i = 0; i < data.length - 2; i++) {
-                if (data[i] == 0x03 && data[i + 1] == 0x0D) { // Warning lamp key (0x0300000D)
+                if (data[i] == 0x03 && data[i + 1] == 0x0D) { // Warning lamp (0x0300000D)
                     target.warningLamp = (data[i + 2] & 0xFF) == 1;
-                } else if (data[i] == 0x03 && data[i + 1] == 0x0E && i + 3 < data.length) { // Injection amount (0x0300000E)
+                } else if (data[i] == 0x03 && data[i + 1] == 0x0E && i + 3 < data.length) {
                     int rawInj = ((data[i + 2] & 0xFF) << 8) | (data[i + 3] & 0xFF);
                     target.fuelInjection = rawInj / 100.0;
                 }
             }
+
+            // Full 32-bit CAN ids (0x02000008 = DTC count, 0x02000009 = active code).
+            Integer dtcCount = findCanValue(data, 0x02000008, 1);
+            if (dtcCount != null) target.dtcCount = dtcCount;
+            Integer dtcCode = findCanValue(data, 0x02000009, 2);
+            if (dtcCode != null) target.dtcCode = dtcCode;
+            Integer warning = findCanValue(data, 0x0300000D, 1);
+            if (warning != null) target.warningLamp = warning == 1;
+            Integer injection = findCanValue(data, 0x0300000E, 2);
+            if (injection != null) target.fuelInjection = injection / 100.0;
+
             return true;
         }
 
@@ -332,6 +346,29 @@ public final class YamahaProtocol {
         }
         if (fuelRateLh <= 0.05) return 99.9;
         double kmL = speedKmh / fuelRateLh;
-        return Math.min(99.9, Math.max(5.0, kmL));
+        // Do not hide genuinely poor economy behind an artificial 5 km/L floor.
+        return Math.min(99.9, Math.max(0.1, kmL));
+    }
+
+    /**
+     * Scans a 0x56 CAN payload for a 32-bit big-endian CAN id followed by its
+     * value. Returns null when the id is not present.
+     */
+    private static Integer findCanValue(byte[] data, int canId, int valueLength) {
+        if (data == null) return null;
+        for (int i = 0; i + 4 + valueLength <= data.length; i++) {
+            int id = ((data[i] & 0xFF) << 24)
+                    | ((data[i + 1] & 0xFF) << 16)
+                    | ((data[i + 2] & 0xFF) << 8)
+                    | (data[i + 3] & 0xFF);
+            if (id == canId) {
+                int v = 0;
+                for (int b = 0; b < valueLength; b++) {
+                    v = (v << 8) | (data[i + 4 + b] & 0xFF);
+                }
+                return v;
+            }
+        }
+        return null;
     }
 }

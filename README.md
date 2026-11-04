@@ -1,147 +1,167 @@
 # Yamaha XSR 155 Companion
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![APK Size](https://img.shields.io/badge/APK%20Size-50%20KB-success.svg)](release/xsr-companion-v1.0.apk)
-[![Zero Internet](https://img.shields.io/badge/Internet%20Permission-None%20(100%25%20Offline)-brightgreen.svg)](#privacy-guarantee)
-[![Target SDK](https://img.shields.io/badge/Android-8.0%20to%2014%20(API%2026--34)-orange.svg)](app/build.gradle)
+A 100% offline, privacy-first Android companion for the **Yamaha XSR 155** (and compatible **MT-15**, **YZF-R15 V3/V4**, and other Yamaha models using the `SCCU1_ICE` / Y-Connect CCU).
 
-An ultra-lightweight, 100% offline, privacy-first Android companion app for the **Yamaha XSR 155** (and compatible **MT-15** / **YZF-R15 V3/V4** motorcycles with the Yamaha CCU / `SCCU1_ICE` system).
-
-Replaces the bloated official Yamaha Motor On / Y-Connect application (90.7 MB, cloud logins, Sentry/Firebase tracking, AWS telemetry) with a lean **50 KB** offline alternative that communicates directly with your motorcycle over Bluetooth Low Energy (BLE).
+Version 2.0 is a full Material 3 rewrite: five focused screens, automatic ride recording, fuel and service tracking, DTC diagnostics, and aggressive battery optimisation. There is no INTERNET permission, no account, no analytics, and no telemetry upload.
 
 ---
 
-<p align="center">
-  <img src="docs/xsr_screen.png" width="340" alt="Yamaha XSR Companion App Screenshot" />
-</p>
+## What's new in 2.0
+
+### Material 3 UI
+- **Dashboard** — live speed, RPM, coolant, throttle, odometer, ride stats, fuel gauge, range, and the next service item.
+- **Rides** — lifetime totals plus ride history, speed charts, per-ride stats, GPX sharing, and full ZIP export.
+- **Maintenance** — seven odometer-driven service items with configurable intervals and service history.
+- **Diagnostics** — live link status, plain-English DTC explanations, DTC history, and the rolling live log.
+- **Settings** — auto-connect, CCU passkey, units, tank/reserve size, alert thresholds, and data management.
+
+### Battery and CPU
+- UI refreshes every **2 s** while a screen is open; the foreground service processes at **5 s** in the background.
+- Telemetry frames are parsed at most **5 Hz**, even though the CCU streams at 10 Hz.
+- Fuel is integrated using **real elapsed time** and flushed to prefs only every ~30 s.
+- GPS is adaptive: 2 s / 5 m while moving, stopped after 30 s stationary, resumed when wheel speed exceeds 2 km/h.
+- BLE uses `CONNECTION_PRIORITY_BALANCED`, low-power scanning, a 12 s scan timeout, and stops the service when idle and unbound.
+- No per-packet broadcasts or database writes. Ride points are written only while moving.
+
+### Privacy / release hardening
+- No `INTERNET` permission.
+- `android:allowBackup="false"` and no cleartext traffic.
+- File provider is non-exported with canonical-path validation.
+- Release builds use R8 + resource shrinking and optional signing via `keystore.properties`.
 
 ---
 
 ## Features
 
-### 📊 Aggregate Stats & Real-Time Fuel Economy
-* **Lifetime Distance & Odometer**: Displays both the factory motorcycle cumulative odometer (`0x0200000A`) streamed from the CCU and total companion app-logged riding distance across all recorded rides.
-* **Lifetime Speed Metrics**: Accurately computes overall lifetime average speed across all rides ($\sum \text{distance} / \sum \text{time}$) and lifetime top speed.
-* **Instantaneous Mileage (km/L)**: Live real-time fuel efficiency calculated via speed-density air-fuel ratio matching the 155.1cc VVA engine dynamics, with automatic fuel overrun cut-off recognition during engine braking.
-* **Fuel Tank Capacity & Remaining Range**:
-  * Tracks remaining fuel in the 10.0 Litre tank in Litres and percentage.
-  * Real-time estimated range based on dynamic average mileage.
-  * Low-fuel reserve alert (< 2.0 L remaining).
-  * One-tap "⛽ Log Full Tank (10.0 L)" quick reset button for refuels.
+### Riding
+- Zero-click ride recording starts when the bike moves, not merely when the ignition is on.
+- Records wheel speed, RPM, throttle, coolant, and GPS every 2 s.
+- Discards stationary sessions under 50 m / 5 km/h so the garage never fills with empty rides.
+- Standard GPX 1.1 export with Garmin TrackPoint extensions, plus CSV export of rides, fuel, and service history.
+- Ride-recap notification and per-ride charts (no charting library).
 
-### ⏱️ Zero-Click Automatic Ride Tracking & GPX Export
-* **Completely Hands-Free**: Starts logging automatically the instant the phone connects to your bike's CCU over BLE.
-* **Synchronized Telemetry**: Records GPS track points every second paired with motorcycle CAN telemetry:
-  * **Wheel Speed (km/h)** (direct from the wheel sensor, zero GPS latency)
-  * **Engine RPM**
-  * **Throttle Opening Angle (%)**
-  * **Coolant Temperature (°C)**
-* **Smart Discard Filter**: If movement was `< 50 meters` (e.g., turning the key on/off in the garage), the trip is automatically discarded to keep your ride history clean.
-* **Standard GPX 1.1 Exporter**: Automatically generates standard `.gpx` files with Garmin TrackPoint extensions (`<gpxtpx:cad>` for RPM, `<gpxtpx:temp>` for Coolant Temp, `<speed>` for wheel speed). Export directly to **Strava**, **Garmin Connect**, **Relive**, **Google Earth**, or telemetry video overlays.
+### Fuel
+- Remaining fuel in litres/gallons, percentage, and estimated range.
+- Full and partial refuels; full fills anchor real tank-to-tank mileage.
+- Low-fuel reserve warning.
+- Fuel log persisted in SQLite.
 
-### 🔧 Offline DTC Diagnostic Trouble Code Reader
-* **20+ Offline Yamaha 155cc Codes**: Decodes check engine status (`0x0300000D`) and diagnostic fault codes (`0x02000009`) straight from the ECU.
-* **Plain-English Explanations**: Diagnoses issues like DTC 12 (Crank sensor), DTC 19 (Sidestand switch), DTC 21 (Coolant temp sensor), DTC 46 (Charging voltage), and DTC 84 (VVA solenoid) without needing a dealer OBD-II scanner.
+### Maintenance
+- Chain clean & lube, engine oil, oil filter, brake pads/fluid, spark plug, air filter, coolant.
+- Intervals and last-service odometer are stored locally.
+- New (used) bikes are automatically baselined at the current odometer on first sync.
+- Service history with notes and cost.
 
-### 🛠️ Odometer-Driven Maintenance Tracker
-* **Real Motorcycle Odometer**: Automatically reads the bike's actual cumulative odometer (`0x0200000A`) over BLE.
-* **Configurable Intervals**:
-  * **Drive Chain Clean & Lube**: Every 500 km
-  * **Engine Oil (Yamalube 10W-40)**: Every 3,000 km
-  * **Oil Filter Element**: Every 6,000 km
-  * **Brake Pads & Fluid**: Every 5,000 km
-  * **Spark Plug (NGK MR8E9)**: Every 10,000 km
-  * **Air Cleaner Element**: Every 12,000 km
-  * **Coolant Flush**: Every 20,000 km
-* **One-Tap Reset**: Tap "Lube Done" or "Oil Replaced" to log service at your current odometer.
+### Diagnostics
+- Parses DTC count/code and warning lamp from CAN frames.
+- 20+ offline Yamaha 155cc DTC descriptions with severity, symptoms, and suggested action.
+- DTC history stored locally.
+- Exportable rolling BLE/application log.
 
-### 📱 Cluster Meter Synchronization
-* **Phone Battery Sync**: Relays phone battery percentage to the bike's LCD gauge every 1000 ms via packet `0x058A`.
-* **Clock Sync**: Auto-syncs your motorcycle's instrument cluster clock to phone time.
-* **Incoming Call Alerts**: Signals incoming and missed phone calls to the meter's call indicator via packet `0x058B`.
-
-### 📍 Last Parked Location (Offline)
-* Captures GPS coordinates precisely at the moment of BLE disconnect (ignition key turned off).
-* Includes a one-tap "Navigate to Motorcycle" button to launch navigation directly back to your parking spot.
+### Cluster sync
+- Phone battery and clock sync (`0x058A`).
+- Incoming/missed call indication (`0x058B`).
+- Last parked location saved at disconnect with one-tap navigation.
 
 ---
 
-## Privacy Guarantee
+## Privacy guarantee
 
 ```
-No INTERNET Permission.
-No Analytics.
-No Trackers.
-No Cloud Accounts.
-No Telemetry Uploads.
+No INTERNET permission.
+No analytics.
+No trackers.
+No cloud accounts.
+No telemetry uploads.
 ```
 
-The app manifest declares **zero** network access:
-```xml
-<!-- In AndroidManifest.xml: android.permission.INTERNET is completely absent -->
-```
-All ride logs, GPS tracks, diagnostic logs, and maintenance records remain exclusively inside your phone's encrypted SQLite database (`xsr_rides.db`).
+The manifest deliberately omits `android.permission.INTERNET`. All rides, GPS points, fuel entries, service records, and diagnostic logs stay in the app's private storage. Data leaves the phone only when you explicitly share or export it.
 
 ---
 
-## Comparison: Official Yamaha App vs. XSR Companion
+## Requirements
 
-| Metric | Official Yamaha Motor On App | XSR Companion App |
-| :--- | :---: | :---: |
-| **APK File Size** | **90.7 MB** | **50 KB** (0.05 MB) |
-| **Internet Access** | Required (`android.permission.INTERNET`) | **None** (100% Offline) |
-| **Cloud Analytics / Trackers** | Sentry, Firebase, Gigya, Google Measurement | **Zero** |
-| **GPX / CSV Ride Export** | Locked in Yamaha Cloud Database | **Instant One-Click Export** |
-| **Fault Diagnostics** | Vague warning, visit dealer | **Plain-English DTC code reader** |
-| **Maintenance** | Cloud / dealer appointment system | **Real Odometer-Driven local tracker** |
-| **Memory Footprint**| ~180 MB RAM | **~18 MB RAM** |
+- Android **17** (API 37) or newer. This build targets and requires API 37.
+- JDK 17.
+- Android SDK with API 37 and Build-Tools 37.
+
+The project uses AGP **9.5.0**, Gradle **9.8.2**, Material Components **1.14.0**, and Java 17 source/target.
 
 ---
 
-## Reverse-Engineered Protocol
-
-The Yamaha CCU (SCCU1 ICE) uses the Nordic UART Service (NUS):
-
-* **Service UUID**: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-* **RX Characteristic (Write)**: `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
-* **TX Characteristic (Notify)**: `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
-
-For full byte-level packet layouts, checksum algorithms, and CAN slot identifiers, see:
-📖 [**Full Reverse-Engineered BLE Protocol Specification**](docs/yamaha_xsr_ble_spec.md)
-
----
-
-## Installation
-
-### Option 1: Install Prebuilt APK
-Download the signed debug APK directly from this repository:
-👉 [**Download xsr-companion-v1.0.apk (50 KB)**](release/xsr-companion-v1.0.apk)
-
-Or sideload via ADB:
-```bash
-adb install -r release/xsr-companion-v1.0.apk
-```
-
-### Option 2: Build From Source
-Requirements: Android SDK (API 34), JDK 17.
+## Build
 
 ```bash
-git clone https://github.com/agasthya36/xsr-companion.git
 cd xsr-companion
-./gradlew assembleDebug
+./gradlew :app:assembleDebug
 ```
-The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
+
+APK: `app/build/outputs/apk/debug/app-debug.apk`
+
+Run unit tests:
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+### Signed release
+
+Create a keystore (once) and a `keystore.properties` file in the project root:
+
+```properties
+storeFile=release/xsr-release.jks
+storePassword=...
+keyAlias=xsr
+keyPassword=...
+```
+
+Then:
+
+```bash
+./gradlew :app:assembleRelease
+```
+
+If `keystore.properties` is absent, release builds fall back to debug signing so the build still works for local testing. Keep the keystore and properties file backed up and out of version control.
+
+---
+
+## Install
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+If you are replacing a build signed with a different key (for example the
+original debug-signed v1.0), Android refuses an in-place update. Uninstall the
+old package first; its private app data is removed with it.
+
+The first launch asks for Bluetooth, location, notification, and phone-state permissions. Bluetooth and location are required for the CCU link and ride GPS; notifications and phone-state are optional (alerts and call relay).
+
+---
+
+## Protocol
+
+The CCU exposes the Nordic UART Service (NUS):
+
+- Service: `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+- RX (phone writes): `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
+- TX (phone notifies): `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+
+See [the full protocol notes](docs/yamaha_xsr_ble_spec.md) for framing, checksums, TLV/CAN identifiers, authentication, and fuel calculations.
 
 ---
 
 ## Compatibility
-* **Yamaha XSR 155** (All model years with CCU)
-* **Yamaha MT-15 V2** (Y-Connect CCU)
-* **Yamaha YZF-R15 V3 / V4 / R15M** (Y-Connect CCU)
-* **Yamaha Aerox 155 / NMAX 155** (SCCU1 profile)
+
+- Yamaha XSR 155 (all years with CCU)
+- Yamaha MT-15 V2
+- Yamaha YZF-R15 V3 / V4 / R15M
+- Yamaha Aerox 155 / NMAX 155 (SCCU1 profile)
 
 ---
 
 ## License
-Licensed under the [Apache License, Version 2.0](LICENSE).
-Yamaha, XSR 155, MT-15, and Y-Connect are trademarks of Yamaha Motor Co., Ltd. This project is an independent open-source reverse-engineering research project and is not affiliated with or endorsed by Yamaha Motor Co., Ltd.
+
+Apache License 2.0. See [LICENSE](LICENSE).
+
+Yamaha, XSR 155, MT-15, and Y-Connect are trademarks of Yamaha Motor Co., Ltd. This is an independent reverse-engineering project, not affiliated with or endorsed by Yamaha.

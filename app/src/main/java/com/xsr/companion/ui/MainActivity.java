@@ -1,59 +1,63 @@
 package com.xsr.companion.ui;
 
 import android.Manifest;
-import android.app.Activity;
-import android.app.Dialog;
-import android.content.BroadcastReceiver;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.ScrollView;
-import android.widget.TextView;
-import android.widget.Toast;
 
-import com.xsr.companion.data.RideDatabaseHelper;
-import com.xsr.companion.data.RideFileProvider;
-import com.xsr.companion.diagnostics.DtcManager;
-import com.xsr.companion.maintenance.FuelManager;
-import com.xsr.companion.maintenance.MaintenanceManager;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
+import androidx.lifecycle.Lifecycle;
+
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.xsr.companion.R;
 import com.xsr.companion.service.XsrBleService;
-import com.xsr.companion.util.AppLogManager;
 
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
+public class MainActivity extends AppCompatActivity {
 
-public class MainActivity extends Activity {
+    public static final String EXTRA_TAB = "extra_tab";
+    public static final int TAB_DASHBOARD = 0;
+    public static final int TAB_RIDES = 1;
+    public static final int TAB_MAINTENANCE = 2;
+    public static final int TAB_DIAGNOSTICS = 3;
+    public static final int TAB_SETTINGS = 4;
+
+    private static final String[] TAGS = {
+            "tab_dashboard", "tab_rides", "tab_maintenance", "tab_diagnostics", "tab_settings"
+    };
 
     private static final int PERMISSION_REQ_CODE = 155;
+    private static final String STATE_TAB = "state_selected_tab";
 
-    private TextView tvConnectionStatus;
-    private TextView tvStatusDot;
-    private TextView tvDeviceName;
-    private TextView tvPacketCounter;
-    private Button btnViewLogs;
-    private Button btnKillOfficialApp;
-    private Button btnScanConnect;
-    private Button btnDisconnect;
+    private static final String[] CORE_PERMISSIONS = {
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+    };
 
-    private XsrBleService bleService = null;
+    private static final String[] OPTIONAL_PERMISSIONS = {
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.READ_PHONE_STATE
+    };
+
+    private BottomNavigationView bottomNav;
+    private XsrBleService bleService;
     private boolean isBound = false;
+    private int selectedTab = TAB_DASHBOARD;
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -61,8 +65,6 @@ public class MainActivity extends Activity {
             if (service instanceof XsrBleService.LocalBinder) {
                 bleService = ((XsrBleService.LocalBinder) service).getService();
                 isBound = true;
-                AppLogManager.getInstance().log("MainActivity", "Connected to XsrBleService via binder");
-                refreshUiFromServiceState();
             }
         }
 
@@ -70,694 +72,289 @@ public class MainActivity extends Activity {
         public void onServiceDisconnected(ComponentName name) {
             bleService = null;
             isBound = false;
-            AppLogManager.getInstance().log("MainActivity", "Disconnected from XsrBleService binder");
-        }
-    };
-
-    private TextView tvLiveSpeed;
-    private TextView tvLiveRpm;
-    private TextView tvLiveCoolant;
-    private TextView tvLiveThrottle;
-    private TextView tvLiveOdometer;
-    private TextView tvLiveMileage;
-    private TextView tvLiveFuelRate;
-    private TextView tvLiveTripFuel;
-
-    private TextView tvAggTotalOdo;
-    private TextView tvAggTrackedDistance;
-    private TextView tvAggAvgSpeed;
-    private TextView tvAggTopSpeed;
-    private TextView tvAggFuelRemaining;
-    private TextView tvAggEstRange;
-    private TextView tvAggMileageNow;
-    private TextView tvAggTripAvgMileage;
-    private Button btnLogRefuel;
-
-    private TextView tvDtcStatus;
-    private TextView tvDtcDetails;
-
-    private TextView tvChainLubeStatus;
-    private Button btnResetChainLube;
-    private TextView tvEngineOilStatus;
-    private Button btnResetEngineOil;
-
-    private TextView tvLastRideStats;
-    private Button btnExportLastGpx;
-
-    private TextView tvParkedCoordinates;
-    private TextView tvParkedTime;
-    private Button btnNavigateToBike;
-
-    private TextView tvBatteryPercent;
-    private View layoutPermissions;
-    private Button btnGrantPermissions;
-
-    private SharedPreferences prefs;
-    private MaintenanceManager maintenanceManager;
-    private FuelManager fuelManager;
-    private RideDatabaseHelper rideDb;
-    private RideDatabaseHelper.RideSummary latestRide = null;
-
-    private final BroadcastReceiver statusReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (XsrBleService.BROADCAST_STATUS.equals(intent.getAction())) {
-                String status = intent.getStringExtra(XsrBleService.EXTRA_STATUS_TEXT);
-                boolean isConnected = intent.getBooleanExtra(XsrBleService.EXTRA_IS_CONNECTED, false);
-                int battery = intent.getIntExtra(XsrBleService.EXTRA_BATTERY_LEVEL, -1);
-                int packets = intent.getIntExtra(XsrBleService.EXTRA_PACKET_COUNT, 0);
-                String deviceName = intent.getStringExtra(XsrBleService.EXTRA_DEVICE_NAME);
-
-                updateConnectionUi(status, isConnected, packets, deviceName);
-                if (battery >= 0) {
-                    tvBatteryPercent.setText(battery + "%");
-                }
-            } else if (XsrBleService.BROADCAST_TELEMETRY.equals(intent.getAction())) {
-                int speed = intent.getIntExtra(XsrBleService.EXTRA_SPEED, 0);
-                int rpm = intent.getIntExtra(XsrBleService.EXTRA_RPM, 0);
-                double throttle = intent.getDoubleExtra(XsrBleService.EXTRA_THROTTLE, 0.0);
-                int coolant = intent.getIntExtra(XsrBleService.EXTRA_COOLANT, 0);
-                double odo = intent.getDoubleExtra(XsrBleService.EXTRA_ODO, 0.0);
-                boolean warning = intent.getBooleanExtra(XsrBleService.EXTRA_WARNING, false);
-                int dtcCode = intent.getIntExtra(XsrBleService.EXTRA_DTC_CODE, 0);
-                double instantMileage = intent.getDoubleExtra(XsrBleService.EXTRA_INSTANT_MILEAGE, 0.0);
-                double tripAvgMileage = intent.getDoubleExtra(XsrBleService.EXTRA_TRIP_AVG_MILEAGE, 48.5);
-                double fuelRate = intent.getDoubleExtra(XsrBleService.EXTRA_FUEL_RATE, 0.0);
-                double tripFuel = intent.getDoubleExtra(XsrBleService.EXTRA_TRIP_FUEL_L, 0.0);
-
-                updateTelemetryUi(speed, rpm, throttle, coolant, odo, warning, dtcCode, instantMileage, fuelRate, tripFuel);
-                updateAggregateStatsUi();
-            } else if (XsrBleService.BROADCAST_RIDE_FINISHED.equals(intent.getAction())) {
-                updateRecentRidesUi();
-                updateParkedLocationUi();
-                updateAggregateStatsUi();
-            }
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(com.xsr.companion.R.layout.activity_main);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        setContentView(R.layout.activity_main);
 
-        prefs = getSharedPreferences(XsrBleService.PREFS_NAME, MODE_PRIVATE);
-        maintenanceManager = new MaintenanceManager(this);
-        fuelManager = new FuelManager(this);
-        rideDb = new RideDatabaseHelper(this);
+        applyInsets();
+        bottomNav = findViewById(R.id.bottomNav);
 
-        initViews();
-        setupListeners();
-        updateParkedLocationUi();
-        updateMaintenanceUi();
-        updateRecentRidesUi();
-        updateAggregateStatsUi();
-        refreshUiFromServiceState();
-
-        // Start background service
-        Intent serviceIntent = new Intent(this, XsrBleService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
+        // Decide the tab before wiring the listener so restoring state does not
+        // briefly select (and create) the dashboard.
+        if (savedInstanceState == null) {
+            selectedTab = clampTab(getIntent().getIntExtra(EXTRA_TAB, TAB_DASHBOARD));
         } else {
-            startService(serviceIntent);
+            selectedTab = clampTab(savedInstanceState.getInt(STATE_TAB, TAB_DASHBOARD));
         }
+        bottomNav.setSelectedItemId(menuIdFor(selectedTab));
 
-        // Auto-connect to bonded CCU if permissions already granted
-        if (hasRequiredPermissions()) {
-            layoutPermissions.setVisibility(View.GONE);
-            Intent scanIntent = new Intent(this, XsrBleService.class);
-            scanIntent.setAction(XsrBleService.ACTION_START_SCAN);
-            startService(scanIntent);
+        bottomNav.setOnItemSelectedListener(item -> {
+            showTab(indexFor(item.getItemId()));
+            return true;
+        });
+        showTab(selectedTab);
+
+        if (hasBluetoothPermission()) startBleService();
+        if (!hasCorePermissions()) {
+            requestAppPermissions();
         } else {
-            layoutPermissions.setVisibility(View.VISIBLE);
-            checkAndRequestPermissions();
-        }
-    }
-
-    private void initViews() {
-        tvConnectionStatus = findViewById(com.xsr.companion.R.id.tvConnectionStatus);
-        tvStatusDot = findViewById(com.xsr.companion.R.id.tvStatusDot);
-        tvDeviceName = findViewById(com.xsr.companion.R.id.tvDeviceName);
-        tvPacketCounter = findViewById(com.xsr.companion.R.id.tvPacketCounter);
-        btnViewLogs = findViewById(com.xsr.companion.R.id.btnViewLogs);
-        btnKillOfficialApp = findViewById(com.xsr.companion.R.id.btnKillOfficialApp);
-        btnScanConnect = findViewById(com.xsr.companion.R.id.btnScanConnect);
-        btnDisconnect = findViewById(com.xsr.companion.R.id.btnDisconnect);
-
-        checkOfficialAppInstalled();
-
-        tvLiveSpeed = findViewById(com.xsr.companion.R.id.tvLiveSpeed);
-        tvLiveRpm = findViewById(com.xsr.companion.R.id.tvLiveRpm);
-        tvLiveCoolant = findViewById(com.xsr.companion.R.id.tvLiveCoolant);
-        tvLiveThrottle = findViewById(com.xsr.companion.R.id.tvLiveThrottle);
-        tvLiveOdometer = findViewById(com.xsr.companion.R.id.tvLiveOdometer);
-        tvLiveMileage = findViewById(com.xsr.companion.R.id.tvLiveMileage);
-        tvLiveFuelRate = findViewById(com.xsr.companion.R.id.tvLiveFuelRate);
-        tvLiveTripFuel = findViewById(com.xsr.companion.R.id.tvLiveTripFuel);
-
-        tvAggTotalOdo = findViewById(com.xsr.companion.R.id.tvAggTotalOdo);
-        tvAggTrackedDistance = findViewById(com.xsr.companion.R.id.tvAggTrackedDistance);
-        tvAggAvgSpeed = findViewById(com.xsr.companion.R.id.tvAggAvgSpeed);
-        tvAggTopSpeed = findViewById(com.xsr.companion.R.id.tvAggTopSpeed);
-        tvAggFuelRemaining = findViewById(com.xsr.companion.R.id.tvAggFuelRemaining);
-        tvAggEstRange = findViewById(com.xsr.companion.R.id.tvAggEstRange);
-        tvAggMileageNow = findViewById(com.xsr.companion.R.id.tvAggMileageNow);
-        tvAggTripAvgMileage = findViewById(com.xsr.companion.R.id.tvAggTripAvgMileage);
-        btnLogRefuel = findViewById(com.xsr.companion.R.id.btnLogRefuel);
-
-        tvDtcStatus = findViewById(com.xsr.companion.R.id.tvDtcStatus);
-        tvDtcDetails = findViewById(com.xsr.companion.R.id.tvDtcDetails);
-
-        tvChainLubeStatus = findViewById(com.xsr.companion.R.id.tvChainLubeStatus);
-        btnResetChainLube = findViewById(com.xsr.companion.R.id.btnResetChainLube);
-        tvEngineOilStatus = findViewById(com.xsr.companion.R.id.tvEngineOilStatus);
-        btnResetEngineOil = findViewById(com.xsr.companion.R.id.btnResetEngineOil);
-
-        tvLastRideStats = findViewById(com.xsr.companion.R.id.tvLastRideStats);
-        btnExportLastGpx = findViewById(com.xsr.companion.R.id.btnExportLastGpx);
-
-        tvParkedCoordinates = findViewById(com.xsr.companion.R.id.tvParkedCoordinates);
-        tvParkedTime = findViewById(com.xsr.companion.R.id.tvParkedTime);
-        btnNavigateToBike = findViewById(com.xsr.companion.R.id.btnNavigateToBike);
-
-        tvBatteryPercent = findViewById(com.xsr.companion.R.id.tvBatteryPercent);
-        layoutPermissions = findViewById(com.xsr.companion.R.id.layoutPermissions);
-        btnGrantPermissions = findViewById(com.xsr.companion.R.id.btnGrantPermissions);
-    }
-
-    private void checkOfficialAppInstalled() {
-        try {
-            getPackageManager().getPackageInfo("jp.co.yamaha_motor.yamahamotoron", 0);
-            btnKillOfficialApp.setVisibility(View.VISIBLE);
-        } catch (PackageManager.NameNotFoundException ignored) {
-            btnKillOfficialApp.setVisibility(View.GONE);
-        }
-    }
-
-    private void setupListeners() {
-        if (btnViewLogs != null) {
-            btnViewLogs.setOnClickListener(v -> showLiveLogsDialog());
+            connectIfAuto();
         }
 
-        tvDeviceName.setOnClickListener(v -> {
-            String currentPasskey = prefs.getString(XsrBleService.PREF_PASSKEY, "");
-            android.widget.EditText input = new android.widget.EditText(this);
-            input.setText(currentPasskey);
-            input.setHint("VIN / Chassis Number or 6-digit PIN");
-            input.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        handleRideExtra(getIntent());
+    }
 
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("CCU Passkey / VIN")
-                    .setMessage("Enter your full Chassis / VIN number or 6-digit CCU passkey:")
-                    .setView(input)
-                    .setPositiveButton("Save", (dialog, which) -> {
-                        String pass = input.getText().toString().trim();
-                        if (pass.length() > 0) {
-                            prefs.edit().putString(XsrBleService.PREF_PASSKEY, pass).apply();
-                            Toast.makeText(this, "Saved: " + pass, Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
+    private void applyInsets() {
+        View root = findViewById(R.id.root);
+        View nav = findViewById(R.id.bottomNav);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(bars.left, bars.top, bars.right, 0);
+            nav.setPadding(0, 0, 0, bars.bottom);
+            return windowInsets;
         });
+    }
 
-        btnScanConnect.setOnClickListener(v -> {
-            Intent intent = new Intent(this, XsrBleService.class);
-            intent.setAction(XsrBleService.ACTION_START_SCAN);
-            startService(intent);
-        });
-
-        btnDisconnect.setOnClickListener(v -> {
-            Intent intent = new Intent(this, XsrBleService.class);
-            intent.setAction(XsrBleService.ACTION_DISCONNECT);
-            startService(intent);
-        });
-
-        btnKillOfficialApp.setOnClickListener(v -> {
-            try {
-                Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                intent.setData(Uri.parse("package:jp.co.yamaha_motor.yamahamotoron"));
-                startActivity(intent);
-                Toast.makeText(this, "Tap 'Force Stop' so Yamaha CCU is free to connect", Toast.LENGTH_LONG).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Please force-stop the Yamaha app in Settings", Toast.LENGTH_SHORT).show();
+    private void handleRideExtra(Intent intent) {
+        if (intent == null) return;
+        long rideId = intent.getLongExtra(XsrBleService.EXTRA_RIDE_ID, -1);
+        if (rideId > 0) {
+            selectTab(TAB_RIDES);
+            // The tab transaction is committed asynchronously; resolve it
+            // before looking the fragment up.
+            getSupportFragmentManager().executePendingTransactions();
+            Fragment f = getSupportFragmentManager().findFragmentByTag(TAGS[TAB_RIDES]);
+            if (f instanceof RidesFragment) {
+                ((RidesFragment) f).openRide(rideId);
             }
-        });
-
-        btnResetChainLube.setOnClickListener(v -> {
-            maintenanceManager.markServiced("chain_lube");
-            updateMaintenanceUi();
-            Toast.makeText(this, "Chain maintenance logged!", Toast.LENGTH_SHORT).show();
-        });
-
-        btnResetEngineOil.setOnClickListener(v -> {
-            maintenanceManager.markServiced("engine_oil");
-            updateMaintenanceUi();
-            Toast.makeText(this, "Engine oil replacement logged!", Toast.LENGTH_SHORT).show();
-        });
-
-        btnLogRefuel.setOnClickListener(v -> {
-            double odo = XsrBleService.sLatestBikeOdo > 0 ? XsrBleService.sLatestBikeOdo : prefs.getFloat(XsrBleService.PREF_LATEST_BIKE_ODO, 0.0f);
-            if (fuelManager != null) {
-                fuelManager.resetToFull(odo);
-                XsrBleService.sFuelRemainingL = fuelManager.getRemainingLitres();
-                XsrBleService.sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(XsrBleService.sTripAvgMileage);
-            }
-            updateAggregateStatsUi();
-            Toast.makeText(this, "⛽ Refuel Logged! Tank reset to 10.0 L (Full)", Toast.LENGTH_SHORT).show();
-        });
-
-        btnExportLastGpx.setOnClickListener(v -> {
-            exportLastRideGpx();
-        });
-
-        btnNavigateToBike.setOnClickListener(v -> {
-            float lat = prefs.getFloat(XsrBleService.PREF_PARKED_LAT, 0f);
-            float lon = prefs.getFloat(XsrBleService.PREF_PARKED_LON, 0f);
-            if (lat != 0f && lon != 0f) {
-                Uri gmmIntentUri = Uri.parse("google.navigation:q=" + lat + "," + lon + "&mode=w");
-                Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-                mapIntent.setPackage("com.google.android.apps.maps");
-                if (mapIntent.resolveActivity(getPackageManager()) != null) {
-                    startActivity(mapIntent);
-                } else {
-                    Intent genericMap = new Intent(Intent.ACTION_VIEW, Uri.parse("geo:" + lat + "," + lon + "?q=" + lat + "," + lon + "(Yamaha XSR 155)"));
-                    startActivity(genericMap);
-                }
-            } else {
-                Toast.makeText(this, "No parked coordinates recorded yet", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        btnGrantPermissions.setOnClickListener(v -> checkAndRequestPermissions());
-    }
-
-    private void updateConnectionUi(String status, boolean isConnected, int packetCount, String deviceName) {
-        String displayStatus = status != null ? status : (isConnected ? "Connected" : "Disconnected");
-        tvConnectionStatus.setText(displayStatus);
-
-        int color;
-        if (isConnected) {
-            color = 0xFF00E676; // Bright Green
-        } else if (displayStatus.contains("Scanning") || displayStatus.contains("Initiating") || displayStatus.contains("Discovering") || displayStatus.contains("Authenticating") || displayStatus.contains("Negotiating")) {
-            color = 0xFFFFB300; // Amber
-        } else {
-            color = 0xFFFF4D4D; // Red
-        }
-
-        tvConnectionStatus.setTextColor(color);
-        if (tvStatusDot != null) {
-            tvStatusDot.setTextColor(color);
-        }
-
-        String name = deviceName != null && !deviceName.isEmpty() ? deviceName : prefs.getString(XsrBleService.PREF_LAST_NAME, "No CCU Paired");
-        tvDeviceName.setText(name);
-
-        if (packetCount > 0) {
-            tvPacketCounter.setVisibility(View.VISIBLE);
-            tvPacketCounter.setText("Packets Received: " + packetCount + " • Live Telemetry Active");
-        } else if (isConnected) {
-            tvPacketCounter.setVisibility(View.VISIBLE);
-            tvPacketCounter.setText("GATT Active • Negotiating MTU 512...");
-        } else {
-            tvPacketCounter.setVisibility(View.GONE);
-        }
-    }
-
-    private void updateTelemetryUi(int speed, int rpm, double throttle, int coolant, double odo, boolean warning, int dtcCode, double instantMileage, double fuelRate, double tripFuel) {
-        tvLiveSpeed.setText(speed + " km/h");
-        tvLiveRpm.setText(rpm + " RPM");
-        tvLiveCoolant.setText(coolant > 0 ? (coolant + " °C") : "-- °C");
-        tvLiveThrottle.setText(String.format(Locale.getDefault(), "%.0f%%", throttle));
-        if (odo > 0) {
-            tvLiveOdometer.setText(String.format(Locale.getDefault(), "%.1f km", odo));
-            updateMaintenanceUi();
-        }
-
-        if (tvLiveMileage != null) {
-            tvLiveMileage.setText(instantMileage > 0.5 ? String.format(Locale.getDefault(), "%.1f km/L", instantMileage) : "-- km/L");
-        }
-        if (tvLiveFuelRate != null) {
-            tvLiveFuelRate.setText(String.format(Locale.getDefault(), "%.2f L/h", fuelRate));
-        }
-        if (tvLiveTripFuel != null) {
-            tvLiveTripFuel.setText(String.format(Locale.getDefault(), "%.2f L", tripFuel));
-        }
-
-        // DTC Engine Diagnostics
-        if (warning || dtcCode > 0) {
-            DtcManager.DtcInfo info = DtcManager.lookup(dtcCode);
-            tvDtcStatus.setText("⚠ Check Engine Active: DTC " + info.code + " (" + info.title + ")");
-            tvDtcStatus.setTextColor(0xFFFF5252);
-            tvDtcDetails.setText("Symptom: " + info.symptom + "\nAction: " + info.action);
-        } else {
-            tvDtcStatus.setText("Engine Diagnostics: All Systems Normal");
-            tvDtcStatus.setTextColor(0xFF00E676);
-            tvDtcDetails.setText("No active fault codes. ECU operating within normal parameters.");
-        }
-    }
-
-    private void updateAggregateStatsUi() {
-        RideDatabaseHelper.AggregateStats stats = rideDb.getAggregateStats();
-
-        // 1. Total kilometres ridden till now
-        double factoryOdo = XsrBleService.sLatestBikeOdo > 0 ? XsrBleService.sLatestBikeOdo : prefs.getFloat(XsrBleService.PREF_LATEST_BIKE_ODO, 0.0f);
-        if (factoryOdo > 0) {
-            tvAggTotalOdo.setText(String.format(Locale.getDefault(), "%.1f km", factoryOdo));
-        } else {
-            tvAggTotalOdo.setText(stats.totalDistanceKm > 0 ? String.format(Locale.getDefault(), "%.1f km (App)", stats.totalDistanceKm) : "-- km");
-        }
-        tvAggTrackedDistance.setText(String.format(Locale.getDefault(), "App Logged: %.1f km (%d rides)", stats.totalDistanceKm, stats.totalRidesCount));
-
-        // 2. Average speed till now
-        if (stats.totalDurationSec > 0 && stats.totalDistanceKm > 0) {
-            tvAggAvgSpeed.setText(String.format(Locale.getDefault(), "%.1f km/h", stats.overallAvgSpeedKmh));
-        } else {
-            tvAggAvgSpeed.setText("-- km/h");
-        }
-        tvAggTopSpeed.setText(stats.lifetimeTopSpeedKmh > 0 ? String.format(Locale.getDefault(), "Lifetime Top: %d km/h", stats.lifetimeTopSpeedKmh) : "Lifetime Top: -- km/h");
-
-        // 3. Fuel capacity remaining
-        float remainingLitres = fuelManager != null ? fuelManager.getRemainingLitres() : (float) XsrBleService.sFuelRemainingL;
-        float remainingPct = fuelManager != null ? fuelManager.getRemainingPercent() : 100f;
-        tvAggFuelRemaining.setText(String.format(Locale.getDefault(), "%.1f L (%.0f%%)", remainingLitres, remainingPct));
-        if (remainingLitres <= 2.0f) {
-            tvAggFuelRemaining.setTextColor(0xFFFF5252); // Low fuel reserve warning
-        } else if (remainingLitres <= 4.0f) {
-            tvAggFuelRemaining.setTextColor(0xFFFFD600); // Amber warning
-        } else {
-            tvAggFuelRemaining.setTextColor(0xFFFFD600);
-        }
-
-        double avgMileage = XsrBleService.sTripAvgMileage > 5.0 ? XsrBleService.sTripAvgMileage : (stats.overallAvgMileageKmL > 5.0 ? stats.overallAvgMileageKmL : FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML);
-        double estRange = fuelManager != null ? fuelManager.getEstimatedRangeKm(avgMileage) : XsrBleService.sEstimatedRangeKm;
-        tvAggEstRange.setText(String.format(Locale.getDefault(), "Est. Range: ~%.0f km", estRange));
-
-        // 4. Mileage as of now reported in bike
-        double instantMileage = XsrBleService.sInstantMileage;
-        if (instantMileage > 0.5) {
-            tvAggMileageNow.setText(String.format(Locale.getDefault(), "%.1f km/L", instantMileage));
-        } else {
-            tvAggMileageNow.setText("-- km/L");
-        }
-        tvAggTripAvgMileage.setText(String.format(Locale.getDefault(), "Trip Avg: %.1f km/L", avgMileage));
-    }
-
-    private void updateMaintenanceUi() {
-        double currentOdo = maintenanceManager.getCurrentOdometer();
-        List<MaintenanceManager.ServiceItem> items = maintenanceManager.getItems();
-
-        for (MaintenanceManager.ServiceItem item : items) {
-            if ("chain_lube".equals(item.id)) {
-                double rem = item.getRemainingKm(currentOdo);
-                if (rem <= 0) {
-                    tvChainLubeStatus.setText(String.format(Locale.getDefault(), "OVERDUE by %.0f km!", Math.abs(rem)));
-                    tvChainLubeStatus.setTextColor(0xFFFF5252);
-                } else {
-                    tvChainLubeStatus.setText(String.format(Locale.getDefault(), "%.0f km remaining (%.0f km interval)", rem, (double) item.intervalKm));
-                    tvChainLubeStatus.setTextColor(rem <= 50 ? 0xFFFFD600 : 0xFF00E5FF);
-                }
-            } else if ("engine_oil".equals(item.id)) {
-                double rem = item.getRemainingKm(currentOdo);
-                if (rem <= 0) {
-                    tvEngineOilStatus.setText(String.format(Locale.getDefault(), "OVERDUE by %.0f km!", Math.abs(rem)));
-                    tvEngineOilStatus.setTextColor(0xFFFF5252);
-                } else {
-                    tvEngineOilStatus.setText(String.format(Locale.getDefault(), "%.0f km remaining (%.0f km interval)", rem, (double) item.intervalKm));
-                    tvEngineOilStatus.setTextColor(rem <= 200 ? 0xFFFFD600 : 0xFF00E676);
-                }
-            }
-        }
-    }
-
-    private void updateRecentRidesUi() {
-        List<RideDatabaseHelper.RideSummary> rides = rideDb.getRecentRides(1);
-        if (!rides.isEmpty()) {
-            latestRide = rides.get(0);
-            String summary = String.format(Locale.getDefault(),
-                    "%s\nDistance: %.2f km • Duration: %s\nTop Speed: %d km/h • Avg: %.1f km/h • Max Revs: %d RPM",
-                    latestRide.getFormattedDate(),
-                    latestRide.distanceKm,
-                    latestRide.getFormattedDuration(),
-                    latestRide.topSpeedKmh,
-                    latestRide.avgSpeedKmh,
-                    latestRide.maxRpm
-            );
-            tvLastRideStats.setText(summary);
-            btnExportLastGpx.setVisibility(latestRide.gpxPath != null ? View.VISIBLE : View.GONE);
-        } else {
-            latestRide = null;
-            tvLastRideStats.setText("No rides logged yet. Turn on motorcycle and ride to start auto-recording!");
-            btnExportLastGpx.setVisibility(View.GONE);
-        }
-    }
-
-    private void exportLastRideGpx() {
-        if (latestRide == null || latestRide.gpxPath == null) {
-            Toast.makeText(this, "No GPX file available for this ride", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        File gpxFile = new File(latestRide.gpxPath);
-        if (!gpxFile.exists()) {
-            Toast.makeText(this, "GPX file missing: " + gpxFile.getName(), Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Uri contentUri = RideFileProvider.getUriForFile(gpxFile);
-        Intent shareIntent = new Intent(Intent.ACTION_SEND);
-        shareIntent.setType("application/gpx+xml");
-        shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
-        shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Yamaha XSR 155 Ride - " + latestRide.getFormattedDate());
-        shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-        startActivity(Intent.createChooser(shareIntent, "Export GPX to Strava, Drive, or Files"));
-    }
-
-    private void updateParkedLocationUi() {
-        float lat = prefs.getFloat(XsrBleService.PREF_PARKED_LAT, 0f);
-        float lon = prefs.getFloat(XsrBleService.PREF_PARKED_LON, 0f);
-        long time = prefs.getLong(XsrBleService.PREF_PARKED_TIME, 0L);
-
-        if (lat != 0f && lon != 0f) {
-            tvParkedCoordinates.setText(String.format(Locale.getDefault(), "Lat: %.6f, Lon: %.6f", lat, lon));
-            SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy • HH:mm:ss", Locale.getDefault());
-            tvParkedTime.setText("Recorded on key-off: " + sdf.format(new Date(time)));
-            btnNavigateToBike.setEnabled(true);
-        } else {
-            tvParkedCoordinates.setText("No recorded parking spot");
-            tvParkedTime.setText("GPS saved strictly on disconnect");
-            btnNavigateToBike.setEnabled(false);
-        }
-    }
-
-    private boolean hasRequiredPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
-                    && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-                    && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        } else {
-            return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-        }
-    }
-
-    private void checkAndRequestPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            String[] perms = {
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.POST_NOTIFICATIONS
-            };
-            requestPermissions(perms, PERMISSION_REQ_CODE);
-        } else {
-            String[] perms = {
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.READ_PHONE_STATE
-            };
-            requestPermissions(perms, PERMISSION_REQ_CODE);
+            intent.removeExtra(XsrBleService.EXTRA_RIDE_ID);
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        if (requestCode == PERMISSION_REQ_CODE) {
-            if (hasRequiredPermissions()) {
-                layoutPermissions.setVisibility(View.GONE);
-                Intent intent = new Intent(this, XsrBleService.class);
-                intent.setAction(XsrBleService.ACTION_START_SCAN);
-                startService(intent);
-            } else {
-                layoutPermissions.setVisibility(View.VISIBLE);
-            }
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        int tab = intent.getIntExtra(EXTRA_TAB, -1);
+        if (tab >= 0) selectTab(tab);
+        handleRideExtra(intent);
+    }
+
+    private int clampTab(int tab) {
+        return Math.max(TAB_DASHBOARD, Math.min(TAB_SETTINGS, tab));
+    }
+
+    private int menuIdFor(int tab) {
+        switch (tab) {
+            case TAB_RIDES: return R.id.nav_rides;
+            case TAB_MAINTENANCE: return R.id.nav_maintenance;
+            case TAB_DIAGNOSTICS: return R.id.nav_diagnostics;
+            case TAB_SETTINGS: return R.id.nav_settings;
+            default: return R.id.nav_dashboard;
         }
     }
 
-    private void refreshUiFromServiceState() {
-        updateConnectionUi(
-                XsrBleService.sStatusText,
-                XsrBleService.sIsConnected,
-                XsrBleService.sPacketCount,
-                XsrBleService.sDeviceName
-        );
+    private int indexFor(int menuId) {
+        if (menuId == R.id.nav_rides) return TAB_RIDES;
+        if (menuId == R.id.nav_maintenance) return TAB_MAINTENANCE;
+        if (menuId == R.id.nav_diagnostics) return TAB_DIAGNOSTICS;
+        if (menuId == R.id.nav_settings) return TAB_SETTINGS;
+        return TAB_DASHBOARD;
+    }
 
-        if (XsrBleService.sBatteryLevel >= 0) {
-            tvBatteryPercent.setText(XsrBleService.sBatteryLevel + "%");
-        }
+    public void selectTab(int tab) {
+        if (bottomNav == null) return;
+        bottomNav.setSelectedItemId(menuIdFor(clampTab(tab)));
+    }
 
-        synchronized (XsrBleService.sLatestTelemetry) {
-            com.xsr.companion.protocol.BikeTelemetry t = XsrBleService.sLatestTelemetry;
-            if (t.timestamp > 0) {
-                updateTelemetryUi(
-                        t.speedKmh,
-                        t.engineRpm,
-                        t.throttlePct,
-                        t.coolantTemp,
-                        t.odometerKm,
-                        t.warningLamp,
-                        t.dtcCode,
-                        t.instantMileageKmL,
-                        t.fuelConsumptionRateLh,
-                        t.tripFuelConsumedL
-                );
+    private void showTab(int index) {
+        selectedTab = clampTab(index);
+        FragmentManager fm = getSupportFragmentManager();
+        FragmentTransaction tx = fm.beginTransaction();
+
+        // Hidden screens must not stay RESUMED: otherwise their 2 s ticker
+        // keeps running in the background and burns battery. Drop them to
+        // STARTED so onPause stops the handler, and restore only the visible
+        // screen to RESUMED.
+        for (int i = 0; i < TAGS.length; i++) {
+            Fragment existing = fm.findFragmentByTag(TAGS[i]);
+            if (existing == null) continue;
+            if (i == selectedTab) {
+                tx.setMaxLifecycle(existing, Lifecycle.State.RESUMED);
+                tx.show(existing);
+            } else {
+                tx.setMaxLifecycle(existing, Lifecycle.State.STARTED);
+                tx.hide(existing);
             }
         }
-        updateAggregateStatsUi();
+
+        String tag = TAGS[selectedTab];
+        Fragment target = fm.findFragmentByTag(tag);
+        if (target == null) {
+            target = createFragment(selectedTab);
+            tx.add(R.id.fragmentContainer, target, tag);
+            tx.setMaxLifecycle(target, Lifecycle.State.RESUMED);
+        }
+        tx.commitAllowingStateLoss();
+    }
+
+    private Fragment createFragment(int index) {
+        switch (index) {
+            case TAB_RIDES: return new RidesFragment();
+            case TAB_MAINTENANCE: return new MaintenanceFragment();
+            case TAB_DIAGNOSTICS: return new DiagnosticsFragment();
+            case TAB_SETTINGS: return new SettingsFragment();
+            default: return new DashboardFragment();
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Service lifecycle
+    // -----------------------------------------------------------------
+
+    private void startBleService() {
+        if (!hasBluetoothPermission()) return;
+        try {
+            ContextCompat.startForegroundService(this, new Intent(this, XsrBleService.class));
+        } catch (Exception ignored) {
+            // The system may refuse FGS start in restricted situations; the
+            // dashboard surface will show a permission/connection hint.
+        }
+    }
+
+    private void connectIfAuto() {
+        if (!com.xsr.companion.settings.SettingsManager.get(this).isAutoConnect()) return;
+        Intent intent = new Intent(this, XsrBleService.class);
+        intent.setAction(XsrBleService.ACTION_START_SCAN);
+        try {
+            ContextCompat.startForegroundService(this, intent);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void connect() {
+        if (!hasCorePermissions()) {
+            requestAppPermissions();
+            return;
+        }
+        startBleService();
+        Intent intent = new Intent(this, XsrBleService.class);
+        intent.setAction(XsrBleService.ACTION_START_SCAN);
+        try {
+            ContextCompat.startForegroundService(this, intent);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void disconnect() {
+        Intent intent = new Intent(this, XsrBleService.class);
+        intent.setAction(XsrBleService.ACTION_DISCONNECT);
+        try {
+            startService(intent);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public XsrBleService getBleService() {
+        return bleService;
+    }
+
+    public boolean isServiceBound() {
+        return isBound;
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        Intent intent = new Intent(this, XsrBleService.class);
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(XsrBleService.BROADCAST_STATUS);
-        filter.addAction(XsrBleService.BROADCAST_TELEMETRY);
-        filter.addAction(XsrBleService.BROADCAST_RIDE_FINISHED);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(statusReceiver, filter);
+        if (hasBluetoothPermission()) {
+            bindService(new Intent(this, XsrBleService.class), serviceConnection,
+                    Context.BIND_AUTO_CREATE);
         }
-
-        refreshUiFromServiceState();
-        updateMaintenanceUi();
-        updateRecentRidesUi();
-        updateAggregateStatsUi();
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        unregisterReceiver(statusReceiver);
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(STATE_TAB, selectedTab);
     }
 
     @Override
     protected void onStop() {
-        super.onStop();
         if (isBound) {
-            unbindService(serviceConnection);
-            isBound = false;
-            bleService = null;
+            try { unbindService(serviceConnection); } catch (Exception ignored) {}
+        }
+        isBound = false;
+        bleService = null;
+        super.onStop();
+    }
+
+    // -----------------------------------------------------------------
+    // Permissions
+    // -----------------------------------------------------------------
+
+    public boolean hasBluetoothPermission() {
+        return checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    public boolean hasCorePermissions() {
+        for (String permission : CORE_PERMISSIONS) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return false;
+        }
+        return true;
+    }
+
+    public void requestAppPermissions() {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        for (String permission : CORE_PERMISSIONS) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) missing.add(permission);
+        }
+        for (String permission : OPTIONAL_PERMISSIONS) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) missing.add(permission);
+        }
+        if (missing.isEmpty()) return;
+        requestPermissions(missing.toArray(new String[0]), PERMISSION_REQ_CODE);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != PERMISSION_REQ_CODE) return;
+
+        if (hasBluetoothPermission()) {
+            startBleService();
+            if (hasCorePermissions()) {
+                Intent intent = new Intent(this, XsrBleService.class);
+                intent.setAction(XsrBleService.ACTION_START_SCAN);
+                try {
+                    ContextCompat.startForegroundService(this, intent);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        // Let visible fragments react (permission banner, phone relay).
+        for (String tag : TAGS) {
+            Fragment f = getSupportFragmentManager().findFragmentByTag(tag);
+            if (f instanceof PermissionAware && f.isVisible()) {
+                ((PermissionAware) f).onPermissionsChanged();
+            }
+        }
+        if (hasCorePermissions() && checkSelfPermission(Manifest.permission.READ_PHONE_STATE)
+                == PackageManager.PERMISSION_GRANTED) {
+            Intent intent = new Intent(this, XsrBleService.class);
+            intent.setAction(XsrBleService.ACTION_REFRESH_PHONE);
+            try { startService(intent); } catch (Exception ignored) {}
         }
     }
 
-    /**
-     * Shows a real-time scrolling terminal dialog with full BLE and protocol diagnostic logs.
-     * Allows live monitoring, exporting to a timestamped file via RideFileProvider, and copying.
-     */
-    private void showLiveLogsDialog() {
-        Dialog dialog = new Dialog(this);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(com.xsr.companion.R.layout.dialog_live_logs);
-
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
-            window.setBackgroundDrawableResource(android.R.color.transparent);
-        }
-
-        TextView tvLogContent = dialog.findViewById(com.xsr.companion.R.id.tvLogContent);
-        TextView tvLogCounter = dialog.findViewById(com.xsr.companion.R.id.tvLogCounter);
-        ScrollView scrollLogContainer = dialog.findViewById(com.xsr.companion.R.id.scrollLogContainer);
-        Button btnCloseLogs = dialog.findViewById(com.xsr.companion.R.id.btnCloseLogs);
-        Button btnExportLogs = dialog.findViewById(com.xsr.companion.R.id.btnExportLogs);
-        Button btnCopyLogs = dialog.findViewById(com.xsr.companion.R.id.btnCopyLogs);
-        Button btnClearLogs = dialog.findViewById(com.xsr.companion.R.id.btnClearLogs);
-
-        AppLogManager logManager = AppLogManager.getInstance();
-
-        // Populate initial logs
-        List<String> currentLogs = logManager.getAllLogs();
-        tvLogCounter.setText(currentLogs.size() + " log entries recorded");
-        if (currentLogs.isEmpty()) {
-            tvLogContent.setText("No log events recorded yet.\nConnect to motorcycle or start BLE scan to observe events.");
-        } else {
-            tvLogContent.setText(logManager.getLogsAsString());
-        }
-
-        // Auto-scroll to bottom
-        scrollLogContainer.post(() -> scrollLogContainer.fullScroll(View.FOCUS_DOWN));
-
-        // Real-time listener for incoming log entries while dialog is open
-        AppLogManager.OnLogListener listener = formattedLine -> runOnUiThread(() -> {
-            if (tvLogContent != null) {
-                if (logManager.getAllLogs().size() <= 1) {
-                    tvLogContent.setText(formattedLine + "\n");
-                } else {
-                    tvLogContent.append(formattedLine + "\n");
-                }
-                tvLogCounter.setText(logManager.getAllLogs().size() + " log entries recorded");
-                scrollLogContainer.post(() -> scrollLogContainer.fullScroll(View.FOCUS_DOWN));
-            }
-        });
-        logManager.addListener(listener);
-
-        dialog.setOnDismissListener(d -> logManager.removeListener(listener));
-
-        btnCloseLogs.setOnClickListener(v -> dialog.dismiss());
-
-        btnExportLogs.setOnClickListener(v -> {
-            try {
-                File logFile = logManager.exportToFile(this);
-                Uri uri = RideFileProvider.getUriForFile(logFile);
-
-                Intent shareIntent = new Intent(Intent.ACTION_SEND);
-                shareIntent.setType("text/plain");
-                shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
-                shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Yamaha XSR Companion CCU Logs - " + logFile.getName());
-                shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
-                startActivity(Intent.createChooser(shareIntent, "Export / Share CCU Logs"));
-                Toast.makeText(this, "Logs saved to " + logFile.getName(), Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
-
-        btnCopyLogs.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            ClipData clip = ClipData.newPlainText("XSR CCU Logs", logManager.getLogsAsString());
-            if (cm != null) {
-                cm.setPrimaryClip(clip);
-                Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        btnClearLogs.setOnClickListener(v -> {
-            logManager.clear();
-            tvLogContent.setText("Log buffer cleared.");
-            tvLogCounter.setText("0 log entries");
-            Toast.makeText(this, "Log buffer cleared", Toast.LENGTH_SHORT).show();
-        });
-
-        dialog.show();
+    public interface PermissionAware {
+        void onPermissionsChanged();
     }
 }

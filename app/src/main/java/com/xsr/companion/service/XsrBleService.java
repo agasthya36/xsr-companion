@@ -25,12 +25,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.BatteryManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -40,60 +41,63 @@ import android.telephony.TelephonyCallback;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
+import androidx.core.content.ContextCompat;
+
+import com.xsr.companion.BuildConfig;
+import com.xsr.companion.R;
 import com.xsr.companion.data.RideDatabaseHelper;
+import com.xsr.companion.diagnostics.DtcManager;
 import com.xsr.companion.maintenance.FuelManager;
 import com.xsr.companion.maintenance.MaintenanceManager;
 import com.xsr.companion.protocol.BikeTelemetry;
 import com.xsr.companion.protocol.YamahaProtocol;
+import com.xsr.companion.settings.SettingsManager;
+import com.xsr.companion.settings.Units;
 import com.xsr.companion.ui.MainActivity;
 import com.xsr.companion.util.AppLogManager;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SuppressLint("MissingPermission")
 public class XsrBleService extends Service {
 
     private static final String TAG = "XsrBleService";
 
-    public static final String CHANNEL_ID = "xsr_companion_service";
+    public static final String CHANNEL_SERVICE = "xsr_service";
+    public static final String CHANNEL_RIDE = "xsr_ride";
+    public static final String CHANNEL_ALERTS = "xsr_alerts";
     public static final int NOTIFICATION_ID = 155;
+    public static final int RIDE_NOTIFICATION_ID = 156;
+    public static final int ALERT_NOTIFICATION_ID = 157;
 
     public static final String ACTION_START_SCAN = "com.xsr.companion.ACTION_START_SCAN";
     public static final String ACTION_STOP_SCAN = "com.xsr.companion.ACTION_STOP_SCAN";
     public static final String ACTION_DISCONNECT = "com.xsr.companion.ACTION_DISCONNECT";
-    public static final String ACTION_CONNECT_MAC = "com.xsr.companion.ACTION_CONNECT_MAC";
-    public static final String EXTRA_MAC_ADDRESS = "extra_mac_address";
+    public static final String ACTION_STOP_SERVICE = "com.xsr.companion.ACTION_STOP_SERVICE";
+    public static final String ACTION_RECONNECT = "com.xsr.companion.ACTION_RECONNECT";
+    public static final String ACTION_REFRESH_PHONE = "com.xsr.companion.ACTION_REFRESH_PHONE";
 
     public static final String BROADCAST_STATUS = "com.xsr.companion.BROADCAST_STATUS";
+    public static final String BROADCAST_RIDE_FINISHED = "com.xsr.companion.BROADCAST_RIDE_FINISHED";
+    public static final String BROADCAST_DTC = "com.xsr.companion.BROADCAST_DTC";
+
     public static final String EXTRA_STATUS_TEXT = "extra_status_text";
     public static final String EXTRA_IS_CONNECTED = "extra_is_connected";
     public static final String EXTRA_BATTERY_LEVEL = "extra_battery_level";
     public static final String EXTRA_PACKET_COUNT = "extra_packet_count";
     public static final String EXTRA_DEVICE_NAME = "extra_device_name";
-
-    public static final String BROADCAST_TELEMETRY = "com.xsr.companion.BROADCAST_TELEMETRY";
-    public static final String EXTRA_SPEED = "extra_speed";
-    public static final String EXTRA_RPM = "extra_rpm";
-    public static final String EXTRA_THROTTLE = "extra_throttle";
-    public static final String EXTRA_COOLANT = "extra_coolant";
-    public static final String EXTRA_ODO = "extra_odo";
-    public static final String EXTRA_WARNING = "extra_warning";
     public static final String EXTRA_DTC_CODE = "extra_dtc_code";
-    public static final String EXTRA_INSTANT_MILEAGE = "extra_instant_mileage";
-    public static final String EXTRA_TRIP_AVG_MILEAGE = "extra_trip_avg_mileage";
-    public static final String EXTRA_FUEL_RATE = "extra_fuel_rate";
-    public static final String EXTRA_TRIP_FUEL_L = "extra_trip_fuel_l";
-    public static final String EXTRA_REMAINING_FUEL_L = "extra_remaining_fuel_l";
-    public static final String EXTRA_ESTIMATED_RANGE_KM = "extra_estimated_range_km";
-
-    public static final String BROADCAST_RIDE_FINISHED = "com.xsr.companion.BROADCAST_RIDE_FINISHED";
+    public static final String EXTRA_RIDE_ID = "extra_ride_id";
 
     public static final String PREFS_NAME = "xsr_companion_prefs";
     public static final String PREF_LAST_MAC = "last_connected_mac";
@@ -105,20 +109,28 @@ public class XsrBleService extends Service {
     public static final String PREF_PASSKEY = "pref_passkey";
     public static final String PREF_PHONE_UUID = "pref_phone_uuid";
 
-    // Public static state for instant Activity UI synchronization
+    // ---------------------------------------------------------------------
+    // State the UI can read at its own (2 s / 5 s) cadence. No telemetry
+    // broadcasts are sent per packet.
+    // ---------------------------------------------------------------------
     public static volatile boolean sIsConnected = false;
+    public static volatile boolean sSessionActive = false;
     public static volatile String sStatusText = "Disconnected";
-    public static volatile String sDeviceName = "No CCU Paired";
+    public static volatile String sDeviceName = "No CCU paired";
     public static volatile int sPacketCount = 0;
     public static volatile int sBatteryLevel = 100;
     public static volatile double sInstantMileage = 0.0;
-    public static volatile double sTripAvgMileage = 48.5;
+    public static volatile double sTripAvgMileage = 0.0;
     public static volatile double sFuelRemainingL = 10.0;
-    public static volatile double sEstimatedRangeKm = 485.0;
+    public static volatile double sEstimatedRangeKm = 0.0;
     public static volatile double sLatestBikeOdo = 0.0;
+    public static volatile long sLastUpdateMs = 0L;
+    public static volatile long sRideStartMs = 0L;
+    public static volatile double sRideDistanceKm = 0.0;
+    public static volatile double sRideFuelL = 0.0;
+    public static volatile boolean sRideActive = false;
     public static final BikeTelemetry sLatestTelemetry = new BikeTelemetry();
 
-    // Binder and client tracking for background battery optimization
     public class LocalBinder extends android.os.Binder {
         public XsrBleService getService() {
             return XsrBleService.this;
@@ -126,20 +138,25 @@ public class XsrBleService extends Service {
     }
 
     private final IBinder binder = new LocalBinder();
-    private int boundClients = 0;
+    private final AtomicInteger boundClients = new AtomicInteger(0);
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothLeScanner bleScanner;
     private BluetoothGatt bluetoothGatt;
     private BluetoothGattCharacteristic rxCharacteristic;
 
-    private boolean isScanning = false;
-    private boolean isConnected = false;
-    private boolean isHandshakeComplete = false;
+    private volatile boolean isScanning = false;
+    private volatile boolean isConnected = false;
+    private volatile boolean isSuspended = false;
+    private volatile boolean userDisconnect = false;
+    private volatile boolean sessionActive = false;
+    private volatile boolean handshakeComplete = false;
+
     private final ConcurrentLinkedQueue<byte[]> writeQueue = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean isWriting = new AtomicBoolean(false);
     private int authCandidateIndex = 0;
     private final List<AuthCandidate> authCandidates = new ArrayList<>();
+    private int connectRetries = 0;
 
     private static class AuthCandidate {
         final String passkey;
@@ -152,29 +169,64 @@ public class XsrBleService extends Service {
 
     private int currentBatteryLevel = 100;
     private int packetCount = 0;
-    private String currentDeviceName = "No CCU Paired";
+    private String currentDeviceName = "No CCU paired";
 
     private boolean isIncomingCall = false;
     private boolean isMissedCall = false;
     private boolean hasUnreadMessage = false;
+    private boolean wasRinging = false;
+    private boolean notificationDirty = false;
 
     private int syncCounter = 0;
     private Handler mainHandler;
+    private Runnable processorRunnable;
     private Runnable syncRunnable;
+    private Runnable scanTimeoutRunnable;
 
     private SharedPreferences prefs;
     private RideDatabaseHelper rideDb;
     private MaintenanceManager maintenanceManager;
     private FuelManager fuelManager;
+    private SettingsManager settings;
+    private final BikeTelemetry pendingTelemetry = new BikeTelemetry();
     private final BikeTelemetry latestTelemetry = new BikeTelemetry();
 
     private LocationManager locationManager;
-    private Location currentLocation = null;
-    private long currentRideId = -1;
-    private long lastPointRecordTime = 0;
-    private double rideStartOdo = 0.0;
+    private volatile Location currentLocation = null;
+    private volatile long currentLocationMs = 0L;
+    private boolean locationUpdatesActive = false;
+    private long stationarySinceMs = 0L;
 
-    // Battery level receiver
+    private volatile long currentRideId = -1;
+    private long rideStartMs = 0L;
+    private double rideStartOdo = 0.0;
+    private volatile double rideDistanceKm = 0.0;
+    private volatile double rideFuelL = 0.0;
+    private int rideMovingSec = 0;
+    private int rideMaxCoolant = 0;
+    private long lastPointRecordMs = 0L;
+
+    private long lastPacketMs = 0L;
+    private long lastProcessMs = 0L;
+    private long lastPersistMs = 0L;
+    private long lastClockSyncMs = 0L;
+    private long lastNotificationSyncMs = 0L;
+    private long lastServiceNotificationMs = 0L;
+
+    private double unsavedFuelL = 0.0;
+    private double inMemoryFuelL = 10.0;
+    private int lastFuelRevision = -1;
+    private double inMemoryOdo = 0.0;
+    private boolean odoDirty = false;
+    private int lastDtcCode = 0;
+    private final Map<Long, Long> dtcCooldowns = new HashMap<>();
+    private long missedCallAtMs = 0L;
+    private CallStateCallback callStateCallback;
+    private boolean telephonyRegistered = false;
+
+    private final Map<String, Long> alertCooldowns = new HashMap<>();
+    private long lastAlertServiceCheckMs = 0L;
+
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -183,6 +235,7 @@ public class XsrBleService extends Service {
                 int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
                 if (level >= 0 && scale > 0) {
                     currentBatteryLevel = (level * 100) / scale;
+                    sBatteryLevel = currentBatteryLevel;
                 }
             }
         }
@@ -192,7 +245,10 @@ public class XsrBleService extends Service {
         @Override
         public void onLocationChanged(Location location) {
             currentLocation = location;
-            checkAndRecordRidePoint();
+            currentLocationMs = System.currentTimeMillis();
+            if (location.hasSpeed() && location.getSpeed() * 3.6 > 3) {
+                stationarySinceMs = 0L;
+            }
         }
 
         @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
@@ -200,774 +256,1107 @@ public class XsrBleService extends Service {
         @Override public void onProviderDisabled(String provider) {}
     };
 
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
     @Override
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        settings = SettingsManager.get(this);
+        rideDb = RideDatabaseHelper.getInstance(this);
+        maintenanceManager = new MaintenanceManager(this);
+        fuelManager = new FuelManager(this);
+        // Baseline maintenance to the last known odometer even before the
+        // first successful BLE sync, so the service screen is useful offline.
+        maintenanceManager.updateOdometer(prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f));
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        mainHandler = new Handler(Looper.getMainLooper());
+
         if (!prefs.contains(PREF_PHONE_UUID)) {
             String uuid = UUID.randomUUID().toString().replace("-", "");
             prefs.edit().putString(PREF_PHONE_UUID, uuid).apply();
         }
-        rideDb = new RideDatabaseHelper(this);
-        maintenanceManager = new MaintenanceManager(this);
-        fuelManager = new FuelManager(this);
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        mainHandler = new Handler(Looper.getMainLooper());
 
-        currentDeviceName = prefs.getString(PREF_LAST_NAME, "No CCU Paired");
+        currentDeviceName = prefs.getString(PREF_LAST_NAME, "No CCU paired");
         sDeviceName = currentDeviceName;
-        sIsConnected = isConnected;
-        sLatestBikeOdo = prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f);
-        sFuelRemainingL = fuelManager.getRemainingLitres();
+        inMemoryOdo = prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f);
+        sLatestBikeOdo = inMemoryOdo;
+        inMemoryFuelL = fuelManager.getRemainingLitres();
+        sFuelRemainingL = inMemoryFuelL;
         sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML);
 
         BluetoothManager bm = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         if (bm != null) {
             bluetoothAdapter = bm.getAdapter();
-            if (bluetoothAdapter != null) {
-                bleScanner = bluetoothAdapter.getBluetoothLeScanner();
-            }
+            if (bluetoothAdapter != null) bleScanner = bluetoothAdapter.getBluetoothLeScanner();
         }
 
-        registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        setupCallStateListener();
-        createNotificationChannel();
-    }
+        ContextCompat.registerReceiver(this, batteryReceiver,
+                new IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED);
+        createNotificationChannels();
+        registerTelephonyIfAllowed();
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "XSR Companion Active",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Maintains connection with Yamaha motorcycle meter");
-            NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) {
-                nm.createNotificationChannel(channel);
-            }
-        }
-    }
-
-    private Notification buildForegroundNotification(String status) {
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 0, notificationIntent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-        );
-
-        Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(this, CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
-        }
-
-        return builder
-                .setContentTitle("Yamaha XSR Companion")
-                .setContentText(status)
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .build();
+        // Recover any ride left open by a process kill / crash.
+        new Thread(() -> {
+            try { rideDb.recoverOpenRides(); } catch (Exception ignored) {}
+        }, "xsr-ride-recovery").start();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
-            }
-            startForeground(NOTIFICATION_ID, buildForegroundNotification("Active"), type);
-        } else {
-            startForeground(NOTIFICATION_ID, buildForegroundNotification("Active"));
+        try {
+            startForegroundCompat();
+        } catch (Exception e) {
+            Log.e(TAG, "Unable to start foreground service: " + e.getMessage());
+            stopSelf();
+            return START_NOT_STICKY;
         }
 
-        if (intent != null && intent.getAction() != null) {
-            String action = intent.getAction();
-            if (ACTION_START_SCAN.equals(action)) {
-                startScan();
-            } else if (ACTION_STOP_SCAN.equals(action)) {
-                stopScan();
-            } else if (ACTION_DISCONNECT.equals(action)) {
-                disconnectGatt();
-            } else if (ACTION_CONNECT_MAC.equals(action)) {
-                String mac = intent.getStringExtra(EXTRA_MAC_ADDRESS);
-                if (mac != null && !mac.isEmpty()) {
-                    connectToMac(mac);
-                }
+        String action = intent != null ? intent.getAction() : null;
+        if (ACTION_START_SCAN.equals(action)) {
+            startScan();
+        } else if (ACTION_STOP_SCAN.equals(action)) {
+            stopScan();
+        } else if (ACTION_DISCONNECT.equals(action)) {
+            userDisconnect = true;
+            stopScan();
+            disconnectGatt(true);
+            broadcastStatus("Disconnected");
+            mainHandler.postDelayed(this::checkStopIfDisconnected, 500);
+        } else if (ACTION_RECONNECT.equals(action)) {
+            userDisconnect = false;
+            startScan();
+        } else if (ACTION_STOP_SERVICE.equals(action)) {
+            userDisconnect = true;
+            stopScan();
+            disconnectGatt(true);
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
+        } else if (ACTION_REFRESH_PHONE.equals(action)) {
+            // READ_PHONE_STATE may have been granted after the service
+            // started; re-register the call-state listener exactly once.
+            unregisterTelephony();
+            registerTelephonyIfAllowed();
+        } else if (intent == null || action == null) {
+            // Process restart. Try the known MAC directly; scanning in the
+            // background is deliberately avoided to save battery.
+            String savedMac = prefs.getString(PREF_LAST_MAC, "");
+            if (settings.isAutoConnect() && hasBluetoothPermission() && savedMac != null && !savedMac.isEmpty()) {
+                connectToMac(savedMac);
             }
         }
-
         return START_STICKY;
     }
 
-    private void updateNotification(String status) {
-        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) {
-            nm.notify(NOTIFICATION_ID, buildForegroundNotification(status));
+    private void startForegroundCompat() {
+        Notification notification = buildServiceNotification(sStatusText);
+        int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
+        if (hasLocationPermission()) {
+            type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+        }
+        try {
+            startForeground(NOTIFICATION_ID, notification, type);
+        } catch (Exception e) {
+            // Some OEM builds reject a typed FGS start when a runtime
+            // permission was just revoked; retry with the base contract.
+            Log.w(TAG, "Typed foreground start failed, retrying: " + e.getMessage());
+            startForeground(NOTIFICATION_ID, notification);
         }
     }
 
+    @Override
+    public IBinder onBind(Intent intent) {
+        boundClients.incrementAndGet();
+        rescheduleProcessor();
+        return binder;
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        boundClients.decrementAndGet();
+        rescheduleProcessor();
+        checkStopIfDisconnected();
+        return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onRebind(Intent intent) {
+        boundClients.incrementAndGet();
+        rescheduleProcessor();
+        super.onRebind(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        AppLogManager.getInstance().log(TAG, "Service destroyed");
+        stopScan();
+        stopProcessor();
+        stopPeriodicSync();
+        stopLocationUpdates();
+        unregisterTelephony();
+        flushState();
+        closeGatt();
+        try { unregisterReceiver(batteryReceiver); } catch (Exception ignored) {}
+        super.onDestroy();
+    }
+
+    // ---------------------------------------------------------------------
+    // Notifications
+    // ---------------------------------------------------------------------
+
+    private void createNotificationChannels() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+
+        NotificationChannel service = new NotificationChannel(
+                CHANNEL_SERVICE, "Bike connection", NotificationManager.IMPORTANCE_LOW);
+        service.setDescription("Maintains the Bluetooth connection to the motorcycle.");
+        nm.createNotificationChannel(service);
+
+        NotificationChannel ride = new NotificationChannel(
+                CHANNEL_RIDE, "Ride recaps", NotificationManager.IMPORTANCE_DEFAULT);
+        ride.setDescription("Summary shown after a ride ends.");
+        nm.createNotificationChannel(ride);
+
+        NotificationChannel alerts = new NotificationChannel(
+                CHANNEL_ALERTS, "Riding alerts", NotificationManager.IMPORTANCE_HIGH);
+        alerts.setDescription("Overspeed, coolant, low fuel and service reminders.");
+        alerts.enableVibration(true);
+        nm.createNotificationChannel(alerts);
+    }
+
+    private Notification buildServiceNotification(String status) {
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent openIntent = PendingIntent.getActivity(this, 0, open,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent disconnect = new Intent(this, XsrBleService.class).setAction(ACTION_DISCONNECT);
+        PendingIntent disconnectIntent = PendingIntent.getService(this, 1, disconnect,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        return new Notification.Builder(this, CHANNEL_SERVICE)
+                .setContentTitle("XSR Companion")
+                .setContentText(status)
+                .setSmallIcon(R.drawable.ic_stat_moto)
+                .setContentIntent(openIntent)
+                .addAction(new Notification.Action.Builder(
+                        android.R.drawable.ic_menu_close_clear_cancel, "Disconnect", disconnectIntent).build())
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .build();
+    }
+
+    private void updateServiceNotification(String status) {
+        safeNotify(NOTIFICATION_ID, buildServiceNotification(status));
+    }
+
+    private void safeNotify(int id, Notification notification) {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        try {
+            nm.notify(id, notification);
+        } catch (SecurityException ignored) {
+            // POST_NOTIFICATIONS can be revoked while the service runs.
+        }
+    }
+
+    private void postRideRecap(RideDatabaseHelper.RideSummary summary) {
+        if (summary == null) return;
+        String text = String.format(Locale.getDefault(),
+                "%s • %s • top %s",
+                Units.distance(settings, summary.distanceKm),
+                summary.getFormattedMovingTime(),
+                Units.speed(settings, summary.topSpeedKmh));
+
+        Intent open = new Intent(this, MainActivity.class)
+                .putExtra(MainActivity.EXTRA_TAB, MainActivity.TAB_RIDES)
+                .putExtra(EXTRA_RIDE_ID, summary.id);
+        PendingIntent openIntent = PendingIntent.getActivity(this, 10, open,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_RIDE)
+                .setContentTitle("Ride saved")
+                .setContentText(text)
+                .setStyle(new Notification.BigTextStyle().bigText(text
+                        + "\n" + summary.getFormattedDate()))
+                .setSmallIcon(R.drawable.ic_stat_moto)
+                .setContentIntent(openIntent)
+                .setAutoCancel(true);
+
+        PendingIntent navigate = buildNavigatePendingIntent();
+        if (navigate != null) {
+            builder.addAction(new Notification.Action.Builder(
+                    android.R.drawable.ic_menu_mylocation, "Navigate to bike", navigate).build());
+        }
+
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) {
+            try {
+                nm.notify(RIDE_NOTIFICATION_ID, builder.build());
+            } catch (SecurityException ignored) {
+            }
+        }
+    }
+
+    private PendingIntent buildNavigatePendingIntent() {
+        float lat = prefs.getFloat(PREF_PARKED_LAT, 0f);
+        float lon = prefs.getFloat(PREF_PARKED_LON, 0f);
+        if (lat == 0f && lon == 0f) return null;
+        Intent nav = new Intent(Intent.ACTION_VIEW,
+                Uri.parse("google.navigation:q=" + lat + "," + lon + "&mode=w"));
+        nav.setPackage("com.google.android.apps.maps");
+        return PendingIntent.getActivity(this, 11, nav,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private void postAlert(String key, String title, String text) {
+        long now = System.currentTimeMillis();
+        Long last = alertCooldowns.get(key);
+        long cooldown = 10 * 60 * 1000L;
+        if (last != null && now - last < cooldown) return;
+        alertCooldowns.put(key, now);
+
+        Intent open = new Intent(this, MainActivity.class);
+        PendingIntent openIntent = PendingIntent.getActivity(this, 20, open,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Notification n = new Notification.Builder(this, CHANNEL_ALERTS)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSmallIcon(R.drawable.ic_stat_moto)
+                .setContentIntent(openIntent)
+                .setAutoCancel(true)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .build();
+
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) {
+            try {
+                nm.notify(key.hashCode() & 0xFFFF, n);
+            } catch (SecurityException ignored) {
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Status broadcasting (low frequency only)
+    // ---------------------------------------------------------------------
+
+    private String lastBroadcastStatus = "";
+
     private void broadcastStatus(String statusText) {
         sIsConnected = isConnected;
+        sSessionActive = sessionActive;
         sStatusText = statusText;
         sDeviceName = currentDeviceName;
         sPacketCount = packetCount;
         sBatteryLevel = currentBatteryLevel;
 
         AppLogManager.getInstance().log(TAG, "Status: " + statusText);
-        Intent intent = new Intent(BROADCAST_STATUS);
-        intent.setPackage(getPackageName());
-        intent.putExtra(EXTRA_STATUS_TEXT, statusText);
-        intent.putExtra(EXTRA_IS_CONNECTED, isConnected);
-        intent.putExtra(EXTRA_BATTERY_LEVEL, currentBatteryLevel);
-        intent.putExtra(EXTRA_PACKET_COUNT, packetCount);
-        intent.putExtra(EXTRA_DEVICE_NAME, currentDeviceName);
-        sendBroadcast(intent);
-        updateNotification(statusText);
-    }
-
-    private void broadcastTelemetry() {
-        Intent intent = new Intent(BROADCAST_TELEMETRY);
-        intent.setPackage(getPackageName());
-        intent.putExtra(EXTRA_SPEED, latestTelemetry.speedKmh);
-        intent.putExtra(EXTRA_RPM, latestTelemetry.engineRpm);
-        intent.putExtra(EXTRA_THROTTLE, latestTelemetry.throttlePct);
-        intent.putExtra(EXTRA_COOLANT, latestTelemetry.coolantTemp);
-        intent.putExtra(EXTRA_ODO, latestTelemetry.odometerKm);
-        intent.putExtra(EXTRA_WARNING, latestTelemetry.warningLamp);
-        intent.putExtra(EXTRA_DTC_CODE, latestTelemetry.dtcCode);
-        intent.putExtra(EXTRA_INSTANT_MILEAGE, latestTelemetry.instantMileageKmL);
-        intent.putExtra(EXTRA_TRIP_AVG_MILEAGE, latestTelemetry.tripAvgMileageKmL);
-        intent.putExtra(EXTRA_FUEL_RATE, latestTelemetry.fuelConsumptionRateLh);
-        intent.putExtra(EXTRA_TRIP_FUEL_L, latestTelemetry.tripFuelConsumedL);
-        intent.putExtra(EXTRA_REMAINING_FUEL_L, latestTelemetry.remainingFuelL);
-        intent.putExtra(EXTRA_ESTIMATED_RANGE_KM, sEstimatedRangeKm);
-        sendBroadcast(intent);
-    }
-
-    /**
-     * Checks if the Yamaha CCU is already paired/bonded in Android OS.
-     * If found, establishes a direct LE GATT connection immediately.
-     */
-    public boolean connectToBondedIfPresent() {
-        if (bluetoothAdapter == null) return false;
-        try {
-            Set<BluetoothDevice> bondedDevices = bluetoothAdapter.getBondedDevices();
-            if (bondedDevices != null && !bondedDevices.isEmpty()) {
-                String savedMac = prefs.getString(PREF_LAST_MAC, "");
-                for (BluetoothDevice device : bondedDevices) {
-                    String name = device.getName();
-                    String addr = device.getAddress();
-
-                    boolean isYamaha = (name != null && (name.startsWith(YamahaProtocol.PREFIX_YSCCU) || name.startsWith(YamahaProtocol.PREFIX_YCCU)))
-                            || (addr != null && addr.equalsIgnoreCase("CA:D7:9C:D9:40:4A"))
-                            || (savedMac != null && !savedMac.isEmpty() && addr != null && addr.equalsIgnoreCase(savedMac));
-
-                    if (isYamaha) {
-                        String displayName = name != null ? name : "YSCCU (" + addr + ")";
-                        currentDeviceName = displayName;
-                        broadcastStatus("Found bonded CCU: " + displayName + ", connecting directly...");
-                        connectToDevice(device);
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking bonded devices: " + e.getMessage());
+        if (!statusText.equals(lastBroadcastStatus)) {
+            lastBroadcastStatus = statusText;
+            Intent intent = new Intent(BROADCAST_STATUS);
+            intent.setPackage(getPackageName());
+            intent.putExtra(EXTRA_STATUS_TEXT, statusText);
+            intent.putExtra(EXTRA_IS_CONNECTED, isConnected);
+            intent.putExtra(EXTRA_BATTERY_LEVEL, currentBatteryLevel);
+            intent.putExtra(EXTRA_PACKET_COUNT, packetCount);
+            intent.putExtra(EXTRA_DEVICE_NAME, currentDeviceName);
+            sendBroadcast(intent);
+            updateServiceNotification(statusText);
         }
-        return false;
     }
+
+    private void broadcastDtc(int code) {
+        Intent intent = new Intent(BROADCAST_DTC);
+        intent.setPackage(getPackageName());
+        intent.putExtra(EXTRA_DTC_CODE, code);
+        sendBroadcast(intent);
+    }
+
+    // ---------------------------------------------------------------------
+    // Scanning
+    // ---------------------------------------------------------------------
 
     public void startScan() {
+        if (!hasBluetoothPermission()) {
+            broadcastStatus("Bluetooth permission required");
+            return;
+        }
         if (isConnected) {
-            broadcastStatus("Already connected to CCU");
+            broadcastStatus("Already connected");
             return;
         }
-
-        // 1. Prioritize connecting directly to already-bonded CCU
-        if (connectToBondedIfPresent()) {
-            return;
-        }
-
-        if (bleScanner == null) {
-            if (bluetoothAdapter != null) {
-                bleScanner = bluetoothAdapter.getBluetoothLeScanner();
-            }
-            if (bleScanner == null) {
-                broadcastStatus("Bluetooth LE Scanner not available");
-                return;
-            }
-        }
-
         if (isScanning) return;
+
+        // Prefer an already-bonded CCU: zero scanning cost.
+        if (connectToBondedIfPresent()) return;
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+            broadcastStatus("Bluetooth is off");
+            return;
+        }
+        if (bleScanner == null) bleScanner = bluetoothAdapter.getBluetoothLeScanner();
+        if (bleScanner == null) {
+            broadcastStatus("BLE scanner unavailable");
+            return;
+        }
+
+        userDisconnect = false;
         isScanning = true;
-        broadcastStatus("Scanning for Yamaha CCU...");
+        broadcastStatus("Scanning for your motorcycle…");
 
         try {
-            List<ScanFilter> filters = new ArrayList<>();
-            // Match advertised name prefix or CCU ID
-            filters.add(new ScanFilter.Builder().setDeviceName("YSCCU_00000005826927").build());
-            // Match Nordic UART Service UUID
-            filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(YamahaProtocol.NUS_SERVICE_UUID)).build());
-
-            ScanSettings settings = new ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            // The CCU does not reliably advertise the NUS service UUID in its
+            // scan response, so scan unfiltered for the short 12 s window and
+            // match on name / saved MAC in the callback.
+            ScanSettings scanSettings = new ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
                     .build();
-
-            bleScanner.startScan(filters, settings, scanCallback);
+            bleScanner.startScan(null, scanSettings, scanCallback);
         } catch (Exception e) {
-            // Fallback to open scan
             try {
                 bleScanner.startScan(scanCallback);
             } catch (Exception e2) {
                 isScanning = false;
-                broadcastStatus("Scan error: " + e2.getMessage());
+                broadcastStatus("Scan failed: " + e2.getMessage());
+                return;
             }
         }
+
+        scanTimeoutRunnable = () -> {
+            if (isScanning) {
+                stopScan();
+                broadcastStatus("Motorcycle not found. Turn the ignition on and retry.");
+                checkStopIfDisconnected();
+            }
+        };
+        mainHandler.postDelayed(scanTimeoutRunnable, 12_000);
     }
 
     public void stopScan() {
-        if (bleScanner != null && isScanning) {
-            try {
-                bleScanner.stopScan(scanCallback);
-            } catch (Exception ignored) {}
-            isScanning = false;
+        if (scanTimeoutRunnable != null) {
+            mainHandler.removeCallbacks(scanTimeoutRunnable);
+            scanTimeoutRunnable = null;
         }
+        if (bleScanner != null && isScanning) {
+            try { bleScanner.stopScan(scanCallback); } catch (Exception ignored) {}
+        }
+        isScanning = false;
     }
 
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
-            if (result == null) return;
+            if (result == null || result.getDevice() == null) return;
             BluetoothDevice device = result.getDevice();
-
-            // Check advertisement record first (where name resides before pairing)
             String name = null;
-            if (result.getScanRecord() != null && result.getScanRecord().getDeviceName() != null) {
-                name = result.getScanRecord().getDeviceName();
-            } else if (device != null && device.getName() != null) {
-                name = device.getName();
+            if (result.getScanRecord() != null) name = result.getScanRecord().getDeviceName();
+            if (name == null) {
+                try { name = device.getName(); } catch (Exception ignored) {}
             }
-
-            String addr = device != null ? device.getAddress() : "";
+            String addr = device.getAddress();
             String savedMac = prefs.getString(PREF_LAST_MAC, "");
 
-            boolean isMatch = (name != null && (name.startsWith(YamahaProtocol.PREFIX_YSCCU) || name.startsWith(YamahaProtocol.PREFIX_YCCU)))
-                    || addr.equalsIgnoreCase("CA:D7:9C:D9:40:4A")
-                    || (!savedMac.isEmpty() && addr.equalsIgnoreCase(savedMac));
+            boolean nameMatch = name != null
+                    && (name.startsWith(YamahaProtocol.PREFIX_YSCCU)
+                    || name.startsWith(YamahaProtocol.PREFIX_YCCU));
+            boolean macMatch = savedMac != null && !savedMac.isEmpty() && addr.equalsIgnoreCase(savedMac);
+            boolean advertisesNus = result.getScanRecord() != null
+                    && result.getScanRecord().getServiceUuids() != null
+                    && result.getScanRecord().getServiceUuids()
+                    .contains(new ParcelUuid(YamahaProtocol.NUS_SERVICE_UUID));
 
-            if (isMatch && device != null) {
-                stopScan();
-                String displayName = name != null ? name : "YSCCU (" + addr + ")";
-                currentDeviceName = displayName;
-                broadcastStatus("Discovered " + displayName + " (" + result.getRssi() + " dBm), connecting...");
-                connectToDevice(device);
-            }
+            if (!(nameMatch || macMatch || advertisesNus)) return;
+
+            stopScan();
+            String displayName = name != null ? name : "CCU " + addr;
+            currentDeviceName = displayName;
+            broadcastStatus("Found " + displayName + ", connecting…");
+            connectToDevice(device);
         }
 
         @Override
         public void onScanFailed(int errorCode) {
             isScanning = false;
-            broadcastStatus("BLE Scan failed (code " + errorCode + ")");
+            broadcastStatus("BLE scan failed (code " + errorCode + ")");
         }
     };
 
+    private boolean connectToBondedIfPresent() {
+        if (bluetoothAdapter == null) return false;
+        try {
+            Set<BluetoothDevice> bonded = bluetoothAdapter.getBondedDevices();
+            if (bonded == null) return false;
+            String savedMac = prefs.getString(PREF_LAST_MAC, "");
+            for (BluetoothDevice device : bonded) {
+                String name = device.getName();
+                String addr = device.getAddress();
+                boolean isYamaha = (name != null && (name.startsWith(YamahaProtocol.PREFIX_YSCCU)
+                        || name.startsWith(YamahaProtocol.PREFIX_YCCU)))
+                        || (savedMac != null && !savedMac.isEmpty() && addr != null
+                        && addr.equalsIgnoreCase(savedMac));
+                if (isYamaha) {
+                    currentDeviceName = name != null ? name : "CCU " + addr;
+                    broadcastStatus("Connecting to paired CCU…");
+                    connectToDevice(device);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Bonded device scan failed: " + e.getMessage());
+        }
+        return false;
+    }
+
     private void connectToMac(String mac) {
-        if (bluetoothAdapter == null) return;
-        BluetoothDevice device = bluetoothAdapter.getRemoteDevice(mac);
-        if (device != null) {
-            connectToDevice(device);
+        if (bluetoothAdapter == null || mac == null || mac.isEmpty()) return;
+        try {
+            BluetoothDevice device = bluetoothAdapter.getRemoteDevice(mac);
+            if (device != null) connectToDevice(device);
+        } catch (Exception e) {
+            broadcastStatus("Saved bike not available. Tap Connect.");
         }
     }
 
     private void connectToDevice(BluetoothDevice device) {
-        disconnectGatt();
-
-        String name = device.getName() != null ? device.getName() : currentDeviceName;
+        closeGatt();
+        String name;
+        try { name = device.getName(); } catch (Exception e) { name = null; }
+        if (name == null) name = currentDeviceName;
         currentDeviceName = name;
-        broadcastStatus("Initiating LE connection to " + name + "...");
-        AppLogManager.getInstance().log(TAG, "Initiating LE GATT connection to %s (%s)", name, device.getAddress());
+        broadcastStatus("Connecting to " + name + "…");
 
         prefs.edit()
                 .putString(PREF_LAST_MAC, device.getAddress())
                 .putString(PREF_LAST_NAME, name)
                 .apply();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
-        } else {
-            bluetoothGatt = device.connectGatt(this, false, gattCallback);
-        }
+        bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
     }
 
-    private void disconnectGatt() {
-        stopPeriodicSync();
-        stopRideTracking();
-        writeQueue.clear();
-        isWriting.set(false);
-        isHandshakeComplete = false;
-        authCandidates.clear();
-        authCandidateIndex = 0;
-        if (bluetoothGatt != null) {
-            try {
-                bluetoothGatt.disconnect();
-                bluetoothGatt.close();
-            } catch (Exception ignored) {}
-            bluetoothGatt = null;
-        }
-        rxCharacteristic = null;
-        isConnected = false;
-        packetCount = 0;
-    }
+    // ---------------------------------------------------------------------
+    // GATT state machine
+    // ---------------------------------------------------------------------
 
-    /**
-     * Sequential BLE GATT Callback State Machine:
-     * 1. STATE_CONNECTED -> requestConnectionPriority(HIGH) -> 300ms delay -> discoverServices()
-     * 2. onServicesDiscovered -> setCharacteristicNotification(6E400003) -> writeDescriptor(0x2902)
-     * 3. onDescriptorWrite -> requestMtu(512)
-     * 4. onMtuChanged -> sendAuthPacket(0x7F00)
-     * 5. onCharacteristicChanged -> receive 0x7F01 (startProcessingFlag=1) -> startRideTracking() -> startPeriodicSync()
-     * 6. onCharacteristicChanged -> parseIncomingPacket(0x55, 0x56) -> broadcastTelemetry()
-     */
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
-                isHandshakeComplete = false;
-                writeQueue.clear();
-                isWriting.set(false);
+                sIsConnected = true;
+                handshakeComplete = false;
+                sessionActive = false;
+                connectRetries = 0;
                 packetCount = 0;
-                broadcastStatus("Connected to CCU. Discovering services...");
-
-                // Set high connection priority for fast telemetry streaming
-                gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
-
-                // Delay service discovery slightly to avoid GATT concurrency race condition on Android
+                sPacketCount = 0;
+                broadcastStatus("Connected. Reading services…");
+                try { gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH); } catch (Exception ignored) {}
                 mainHandler.postDelayed(() -> {
                     if (bluetoothGatt != null) {
-                        broadcastStatus("Querying CCU GATT services...");
-                        boolean discoveryStarted = bluetoothGatt.discoverServices();
-                        if (!discoveryStarted) {
-                            broadcastStatus("Service discovery initiation failed");
+                        try {
+                            if (!bluetoothGatt.discoverServices()) {
+                                broadcastStatus("Service discovery failed");
+                            }
+                        } catch (Exception e) {
+                            broadcastStatus("Service discovery error");
                         }
                     }
                 }, 300);
-
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 isConnected = false;
-                isHandshakeComplete = false;
+                sIsConnected = false;
+                handshakeComplete = false;
+                sessionActive = false;
+                sSessionActive = false;
                 writeQueue.clear();
                 isWriting.set(false);
-                stopPeriodicSync();
                 rxCharacteristic = null;
-
-                // Stop and save ride automatically!
-                stopRideTracking();
-
-                // Save last parked location!
+                stopPeriodicSync();
+                finishRide();
                 saveParkedLocation();
+                closeGatt();
 
-                broadcastStatus("Disconnected (Motorcycle turned OFF or status " + status + ")");
-                AppLogManager.getInstance().log(TAG, "Motorcycle disconnected (GATT status=%d)", status);
+                if (status == 133 && !userDisconnect && connectRetries < 2) {
+                    connectRetries++;
+                    broadcastStatus("Connection dropped. Retrying…");
+                    mainHandler.postDelayed(() -> {
+                        String mac = prefs.getString(PREF_LAST_MAC, "");
+                        if (!mac.isEmpty()) connectToMac(mac);
+                    }, 1200L * connectRetries);
+                    return;
+                }
 
-                // Battery Saver: If disconnected and no UI bound, stop background service
-                mainHandler.postDelayed(() -> checkStopIfDisconnected(), 1500);
+                broadcastStatus(userDisconnect ? "Disconnected" : "Motorcycle off (CCU disconnected)");
+                mainHandler.postDelayed(XsrBleService.this::checkStopIfDisconnected, 1500);
             }
         }
 
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                BluetoothGattService service = gatt.getService(YamahaProtocol.NUS_SERVICE_UUID);
-                if (service != null) {
-                    rxCharacteristic = service.getCharacteristic(YamahaProtocol.NUS_RX_CHAR_UUID);
-                    BluetoothGattCharacteristic txCharacteristic = service.getCharacteristic(YamahaProtocol.NUS_TX_CHAR_UUID);
-
-                    if (rxCharacteristic != null) {
-                        rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-                    }
-
-                    if (txCharacteristic != null) {
-                        gatt.setCharacteristicNotification(txCharacteristic, true);
-                        BluetoothGattDescriptor descriptor = txCharacteristic.getDescriptor(YamahaProtocol.CLIENT_CONFIG_DESCRIPTOR);
-                        if (descriptor != null) {
-                            broadcastStatus("Enabling CCU notifications...");
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                            } else {
-                                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                                gatt.writeDescriptor(descriptor);
-                            }
-                            return;
-                        }
-                    }
-                }
-                broadcastStatus("CCU NUS Service not found on device");
-                AppLogManager.getInstance().log(TAG, "CCU NUS service missing on target device");
-            } else {
-                broadcastStatus("Service discovery failed: status " + status);
-                AppLogManager.getInstance().log(TAG, "Service discovery failed with status: %d", status);
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                broadcastStatus("Service discovery failed (" + status + ")");
+                return;
             }
+            BluetoothGattService service = gatt.getService(YamahaProtocol.NUS_SERVICE_UUID);
+            if (service == null) {
+                broadcastStatus("Yamaha NUS service not found");
+                return;
+            }
+
+            rxCharacteristic = service.getCharacteristic(YamahaProtocol.NUS_RX_CHAR_UUID);
+            BluetoothGattCharacteristic tx = service.getCharacteristic(YamahaProtocol.NUS_TX_CHAR_UUID);
+            if (rxCharacteristic != null) {
+                rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+            }
+            if (tx == null) {
+                broadcastStatus("CCU notify characteristic missing");
+                return;
+            }
+
+            boolean notificationSet = gatt.setCharacteristicNotification(tx, true);
+            BluetoothGattDescriptor descriptor = tx.getDescriptor(YamahaProtocol.CLIENT_CONFIG_DESCRIPTOR);
+            if (descriptor == null || !notificationSet) {
+                broadcastStatus("Could not enable CCU notifications");
+                return;
+            }
+            broadcastStatus("Enabling live data…");
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
         }
 
         @Override
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                broadcastStatus("Notifications enabled. Requesting MTU 512...");
-                AppLogManager.getInstance().log(TAG, "NUS TX Notification descriptor enabled successfully. Requesting MTU 512...");
-                // Request MTU 512 after descriptor write has successfully completed
-                gatt.requestMtu(512);
+                broadcastStatus("Negotiating connection…");
+                gatt.requestMtu(247);
             } else {
-                broadcastStatus("Descriptor write error: " + status);
-                AppLogManager.getInstance().log(TAG, "Descriptor write failed with status: %d", status);
+                broadcastStatus("Notification setup failed (" + status + ")");
             }
         }
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
             BluetoothDevice dev = gatt.getDevice();
-            int bondState = (dev != null) ? dev.getBondState() : BluetoothDevice.BOND_NONE;
-            String devName = (dev != null && dev.getName() != null) ? dev.getName() : currentDeviceName;
-            String ccuId = YamahaProtocol.cleanCcuId(devName);
+            int bondState = dev != null ? dev.getBondState() : BluetoothDevice.BOND_NONE;
 
-            AppLogManager.getInstance().log(TAG, "onMtuChanged: mtu=%d, status=%d, bondState=%d, ccuId=%s", mtu, status, bondState, ccuId);
-
-            // If the motorcycle is already bonded in Android OS, the CCU already trusts this phone!
-            // Do NOT cycle through rejected 0x7F00 candidate PINs which triggers CCU lockout (status 147)
             if (bondState == BluetoothDevice.BOND_BONDED) {
-                AppLogManager.getInstance().log(TAG, "CCU is BONDED in Android OS. Telemetry streams directly without 0x7F00 PIN handshake.");
-                isHandshakeComplete = true;
-                authCandidates.clear();
-                authCandidateIndex = 0;
-                broadcastStatus("Connected & Syncing with Meter (Bonded)");
-                startRideTracking();
-                startPeriodicSync();
+                AppLogManager.getInstance().log(TAG, "CCU already bonded; starting session directly");
+                startSession();
                 return;
             }
 
-            // Unbonded device: prepare candidates
-            isHandshakeComplete = false;
-            broadcastStatus("MTU " + mtu + " negotiated. Authenticating with CCU...");
-
-            prepareAuthCandidates(ccuId);
+            // Unbonded: try the user PIN (or CCU ID) once, then the alternate
+            // bonding flag. Never brute-force a long list of PINs; the CCU can
+            // lock out after repeated failures.
+            handshakeComplete = false;
+            authCandidates.clear();
+            authCandidateIndex = 0;
+            prepareAuthCandidates(cleanCcuIdForDevice(dev));
+            broadcastStatus("Pairing with CCU…");
             trySendNextAuth();
 
-            // Watchdog fallback: if CCU sends telemetry directly or misses 0x7F01, start sync after 4.5s
             mainHandler.postDelayed(() -> {
-                if (isConnected && !isHandshakeComplete) {
-                    AppLogManager.getInstance().log(TAG, "Auth response watchdog timeout (4.5s). Starting periodic sync fallback.");
-                    isHandshakeComplete = true;
-                    authCandidates.clear();
-                    authCandidateIndex = 0;
-                    broadcastStatus("Connected & Syncing with Meter");
-                    startRideTracking();
-                    startPeriodicSync();
+                if (isConnected && !handshakeComplete && !sessionActive) {
+                    broadcastStatus("Enter your CCU PIN / VIN to finish pairing");
                 }
-            }, 4500);
+            }, 5000);
         }
 
         @Override
         public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            Log.d(TAG, "onCharacteristicWrite status=" + status);
-            if (isWriting.compareAndSet(true, false)) {
-                processNextWrite();
-            }
+            if (isWriting.compareAndSet(true, false)) processNextWrite();
         }
 
         @Override
-        public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            byte[] value = characteristic.getValue();
-            if (value != null) {
-                Log.d(TAG, "RX Packet (legacy): " + bytesToHex(value));
-            }
-            handleCharacteristicUpdate(value);
-        }
-
-        // Android 13+ (API 33+)
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, byte[] value) {
-            if (value != null) {
-                Log.d(TAG, "RX Packet (API33+): " + bytesToHex(value));
-            }
-            handleCharacteristicUpdate(value);
+            handleIncoming(value);
         }
     };
+
+    private String cleanCcuIdForDevice(BluetoothDevice dev) {
+        String name = null;
+        try { name = dev != null ? dev.getName() : null; } catch (Exception ignored) {}
+        return YamahaProtocol.cleanCcuId(name != null ? name : currentDeviceName);
+    }
 
     private void prepareAuthCandidates(String ccuId) {
         authCandidates.clear();
         authCandidateIndex = 0;
 
         String userPass = prefs.getString(PREF_PASSKEY, "").trim();
-        String last6Ccu = ccuId.length() >= 6 ? ccuId.substring(ccuId.length() - 6) : "826927";
+        String last6Ccu = ccuId.length() >= 6
+                ? ccuId.substring(ccuId.length() - 6) : "826927";
 
-        // 1. If user set custom passkey / vehicle VIN
         if (!userPass.isEmpty()) {
-            if (userPass.length() > 6) {
-                // VIN / Chassis number entered (e.g. 17 chars):
-                // Candidate A: Last 6 digits/characters (the serial number)
-                String last6 = userPass.substring(userPass.length() - 6);
-                authCandidates.add(new AuthCandidate(last6, true));
-                authCandidates.add(new AuthCandidate(last6, false));
-                // Candidate B: First 6 characters
-                String first6 = userPass.substring(0, 6);
-                authCandidates.add(new AuthCandidate(first6, true));
-            } else {
-                authCandidates.add(new AuthCandidate(userPass, true));
-                authCandidates.add(new AuthCandidate(userPass, false));
-            }
+            String candidate = userPass.length() > 6
+                    ? userPass.substring(userPass.length() - 6) : userPass;
+            authCandidates.add(new AuthCandidate(candidate, true));
+            authCandidates.add(new AuthCandidate(candidate, false));
+        } else {
+            authCandidates.add(new AuthCandidate(last6Ccu, true));
+            authCandidates.add(new AuthCandidate(last6Ccu, false));
         }
-
-        // 2. Last 6 digits of CCUID (826927) with updateBondingFlag=1 (registers new phone UUID)
-        authCandidates.add(new AuthCandidate(last6Ccu, true));
-
-        // 3. Last 6 digits of CCUID (826927) with updateBondingFlag=0
-        authCandidates.add(new AuthCandidate(last6Ccu, false));
-
-        // 4. Default 000000 with updateBondingFlag=1
-        authCandidates.add(new AuthCandidate("000000", true));
-
-        // 5. Standard 123456 with updateBondingFlag=1
-        authCandidates.add(new AuthCandidate("123456", true));
     }
 
     private void trySendNextAuth() {
-        if (bluetoothGatt == null || !isConnected || isHandshakeComplete) return;
+        if (bluetoothGatt == null || !isConnected || handshakeComplete) return;
         if (authCandidateIndex >= authCandidates.size()) {
-            broadcastStatus("All PIN candidates rejected. Tap CCU Name to enter PIN.");
-            AppLogManager.getInstance().log(TAG, "All auth candidates exhausted without positive ACK.");
+            broadcastStatus("CCU PIN required. Tap the bike name to enter it.");
             return;
         }
-
         AuthCandidate candidate = authCandidates.get(authCandidateIndex++);
-        String devName = bluetoothGatt.getDevice().getName();
-        String ccuId = YamahaProtocol.cleanCcuId(devName != null ? devName : currentDeviceName);
+        String ccuId = cleanCcuIdForDevice(bluetoothGatt.getDevice());
         String phoneUuid = prefs.getString(PREF_PHONE_UUID, "");
-
-        broadcastStatus("Authenticating CCU (PIN " + candidate.passkey + ", bond=" + (candidate.updateBondingFlag ? "1" : "0") + ")...");
-        AppLogManager.getInstance().log(TAG, "Trying Auth Candidate [%d/%d]: PIN=%s, bondFlag=%b",
-                authCandidateIndex, authCandidates.size(), candidate.passkey, candidate.updateBondingFlag);
-
-        byte[] authPacket = YamahaProtocol.buildAuthPacket(ccuId, candidate.passkey, phoneUuid, candidate.updateBondingFlag, syncCounter++);
-        enqueueWrite(authPacket);
-    }
-
-    private void handleCharacteristicUpdate(byte[] data) {
-        if (data == null || data.length == 0) return;
-
-        // 1. Check if packet is CCU Auth response 0x7F01 (SCCU1StartProcEnt)
-        int startProcAck = YamahaProtocol.parseStartProcessingAck(data);
-        if (startProcAck != -1) {
-            if (startProcAck == 1) {
-                isHandshakeComplete = true;
-                AuthCandidate successfulCandidate = authCandidateIndex > 0 ? authCandidates.get(authCandidateIndex - 1) : null;
-                if (successfulCandidate != null) {
-                    prefs.edit().putString(PREF_PASSKEY, successfulCandidate.passkey).apply();
-                    AppLogManager.getInstance().log(TAG, "CCU Authentication ACCEPTED! Saved working passkey: %s", successfulCandidate.passkey);
-                }
-                broadcastStatus("CCU Authenticated! Live streaming active.");
-                startRideTracking();
-                startPeriodicSync();
-            } else {
-                AppLogManager.getInstance().log(TAG, "CCU Auth candidate rejected (ack=0). Retrying next candidate...");
-                mainHandler.postDelayed(this::trySendNextAuth, 120);
-            }
-            return;
-        }
-
-        // 2. If telemetry packet arrives, mark handshake complete IMMEDIATELY and CANCEL any remaining auth candidates!
-        if (!isHandshakeComplete && (data[0] == YamahaProtocol.START_BYTE_55 || data[0] == YamahaProtocol.START_BYTE_56)) {
-            AppLogManager.getInstance().log(TAG, "Telemetry streaming verified (0x%02X). Marking handshake complete and clearing pending auth.", data[0]);
-            isHandshakeComplete = true;
-            authCandidates.clear();
-            authCandidateIndex = 0;
-            broadcastStatus("Connected & Syncing with Meter");
-            startRideTracking();
-            startPeriodicSync();
-        }
-
-        boolean updated = YamahaProtocol.parseIncomingPacket(data, latestTelemetry);
-        if (updated) {
-            packetCount++;
-            sPacketCount = packetCount;
-
-            // 1. Calculate live fuel flow rate and instantaneous mileage
-            double fuelRate = YamahaProtocol.calculateFuelRateLh(
-                    latestTelemetry.engineRpm,
-                    latestTelemetry.throttlePct,
-                    latestTelemetry.airTemp,
-                    latestTelemetry.atmosphericPressure
-            );
-            double instantMileage = YamahaProtocol.calculateInstantMileageKmL(
-                    latestTelemetry.speedKmh,
-                    fuelRate,
-                    latestTelemetry.throttlePct
-            );
-            latestTelemetry.fuelConsumptionRateLh = fuelRate;
-            latestTelemetry.instantMileageKmL = instantMileage;
-
-            // 2. Fuel consumption integration (every ~1s while engine running)
-            if (latestTelemetry.engineRpm > 0 && fuelRate > 0) {
-                double fuelThisSecL = fuelRate / 3600.0;
-                latestTelemetry.tripFuelConsumedL += fuelThisSecL;
-                if (fuelManager != null) {
-                    fuelManager.consumeFuel(fuelThisSecL);
-                }
-            }
-            if (fuelManager != null) {
-                latestTelemetry.remainingFuelL = fuelManager.getRemainingLitres();
-            }
-
-            // 3. Trip average mileage
-            double tripDistanceKm = (currentRideId > 0 && rideStartOdo > 0 && latestTelemetry.odometerKm > rideStartOdo)
-                    ? (latestTelemetry.odometerKm - rideStartOdo)
-                    : 0.0;
-            if (tripDistanceKm > 0.05 && latestTelemetry.tripFuelConsumedL > 0.002) {
-                latestTelemetry.tripAvgMileageKmL = tripDistanceKm / latestTelemetry.tripFuelConsumedL;
-            } else if (instantMileage > 0) {
-                latestTelemetry.tripAvgMileageKmL = instantMileage;
-            } else {
-                latestTelemetry.tripAvgMileageKmL = FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML;
-            }
-
-            // Update static volatiles for instant UI reflection
-            sInstantMileage = instantMileage;
-            sTripAvgMileage = latestTelemetry.tripAvgMileageKmL;
-            sFuelRemainingL = latestTelemetry.remainingFuelL;
-            if (fuelManager != null) {
-                sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(latestTelemetry.tripAvgMileageKmL);
-            }
-
-            if (latestTelemetry.odometerKm > 0) {
-                sLatestBikeOdo = latestTelemetry.odometerKm;
-                prefs.edit().putFloat(PREF_LATEST_BIKE_ODO, (float) latestTelemetry.odometerKm).apply();
-                maintenanceManager.updateOdometer(latestTelemetry.odometerKm);
-            }
-
-            synchronized (sLatestTelemetry) {
-                sLatestTelemetry.copyFrom(latestTelemetry);
-            }
-
-            checkAndRecordRidePoint();
-            broadcastTelemetry();
-        }
-    }
-
-    private void enqueueWrite(byte[] packet) {
-        if (packet == null) return;
-        writeQueue.add(packet);
-        processNextWrite();
-    }
-
-    private synchronized void processNextWrite() {
-        if (isWriting.get()) return;
-        byte[] packet = writeQueue.poll();
-        if (packet == null) return;
-
-        if (bluetoothGatt == null || rxCharacteristic == null) {
-            writeQueue.clear();
-            return;
-        }
-
-        isWriting.set(true);
-        try {
-            rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-            int res = -1;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                res = bluetoothGatt.writeCharacteristic(rxCharacteristic, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-            } else {
-                rxCharacteristic.setValue(packet);
-                boolean ok = bluetoothGatt.writeCharacteristic(rxCharacteristic);
-                res = ok ? 0 : -1;
-            }
-            Log.d(TAG, "TX Packet (" + packet.length + " bytes, res=" + res + "): " + bytesToHex(packet));
-        } catch (Exception e) {
-            Log.e(TAG, "Write error: " + e.getMessage());
-            isWriting.set(false);
-            mainHandler.postDelayed(this::processNextWrite, 50);
-            return;
-        }
-
-        // Fallback watchdog: unlock after 50ms if onCharacteristicWrite is not invoked by OS
-        mainHandler.postDelayed(() -> {
-            if (isWriting.compareAndSet(true, false)) {
-                processNextWrite();
-            }
-        }, 50);
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        if (bytes == null) return "null";
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02X ", b));
-        }
-        return sb.toString().trim();
-    }
-
-    private void sendStartStreamingCommand() {
-        byte[] packet = YamahaProtocol.buildStartStreamingPacket(syncCounter++);
+        byte[] packet = YamahaProtocol.buildAuthPacket(ccuId, candidate.passkey,
+                phoneUuid, candidate.updateBondingFlag, syncCounter++);
         enqueueWrite(packet);
     }
 
-    private void startRideTracking() {
-        rideStartOdo = latestTelemetry.odometerKm > 0 ? latestTelemetry.odometerKm : sLatestBikeOdo;
-        latestTelemetry.tripFuelConsumedL = 0.0;
-        currentRideId = rideDb.startNewRide(System.currentTimeMillis());
-        AppLogManager.getInstance().log(TAG, "Started ride session #%d (start odo=%.1f km)", currentRideId, rideStartOdo);
-        try {
-            if (locationManager != null) {
-                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1.0f, locationListener);
-                } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1500L, 2.0f, locationListener);
+    // ---------------------------------------------------------------------
+    // Incoming telemetry + processing loop
+    // ---------------------------------------------------------------------
+
+    private void handleIncoming(byte[] data) {
+        if (data == null || data.length == 0) return;
+
+        int startProcAck = YamahaProtocol.parseStartProcessingAck(data);
+        if (startProcAck != -1) {
+            if (startProcAck == 1) {
+                handshakeComplete = true;
+                if (authCandidateIndex > 0) {
+                    AuthCandidate accepted = authCandidates.get(authCandidateIndex - 1);
+                    prefs.edit().putString(PREF_PASSKEY, accepted.passkey).apply();
+                    AppLogManager.getInstance().log(TAG, "CCU accepted the pairing PIN");
                 }
+                startSession();
+            } else if (authCandidateIndex < authCandidates.size()) {
+                mainHandler.postDelayed(this::trySendNextAuth, 250);
+            } else {
+                broadcastStatus("CCU PIN required. Tap the bike name to enter it.");
             }
-        } catch (Exception ignored) {}
-    }
+            return;
+        }
 
-    private void checkAndRecordRidePoint() {
-        if (currentRideId <= 0) return;
         long now = System.currentTimeMillis();
-        // Record at most once every 1000ms
-        if (now - lastPointRecordTime < 950) return;
-        lastPointRecordTime = now;
+        // The CCU streams at 10 Hz. Parsing at 5 Hz is plenty for every metric
+        // and halves the CPU cost; integration uses real elapsed time.
+        if (now - lastPacketMs < 180) return;
+        long dtMs = lastPacketMs == 0 ? 0 : now - lastPacketMs;
+        lastPacketMs = now;
 
-        double lat = currentLocation != null ? currentLocation.getLatitude() : 0.0;
-        double lon = currentLocation != null ? currentLocation.getLongitude() : 0.0;
+        boolean updated;
+        synchronized (pendingTelemetry) {
+            updated = YamahaProtocol.parseIncomingPacket(data, pendingTelemetry);
+        }
+        if (!updated) return;
 
-        rideDb.insertPoint(
-                currentRideId,
-                lat,
-                lon,
-                latestTelemetry.speedKmh,
-                latestTelemetry.engineRpm,
-                latestTelemetry.throttlePct,
-                latestTelemetry.coolantTemp
-        );
+        packetCount++;
+        sPacketCount = packetCount;
+
+        if (!handshakeComplete && (data[0] == YamahaProtocol.START_BYTE_55
+                || data[0] == YamahaProtocol.START_BYTE_56)) {
+            startSession();
+        }
+
+        double dtSec = Math.min(5.0, Math.max(0.0, dtMs / 1000.0));
+        if (dtSec > 0.05) {
+            int rpm;
+            double throttle;
+            int airTemp;
+            double pressure;
+            int speed;
+            int coolant;
+            synchronized (pendingTelemetry) {
+                rpm = pendingTelemetry.engineRpm;
+                throttle = pendingTelemetry.throttlePct;
+                airTemp = pendingTelemetry.airTemp;
+                pressure = pendingTelemetry.atmosphericPressure;
+                speed = pendingTelemetry.speedKmh;
+                coolant = pendingTelemetry.coolantTemp;
+            }
+
+            double fuelRate = YamahaProtocol.calculateFuelRateLh(rpm, throttle, airTemp, pressure);
+            double mileage = YamahaProtocol.calculateInstantMileageKmL(speed, fuelRate, throttle);
+
+            synchronized (pendingTelemetry) {
+                pendingTelemetry.fuelConsumptionRateLh = fuelRate;
+                pendingTelemetry.instantMileageKmL = mileage;
+                if (rpm > 0 && fuelRate > 0) {
+                    double litres = fuelRate * dtSec / 3600.0;
+                    unsavedFuelL += litres;
+                    if (currentRideId > 0) rideFuelL += litres;
+                }
+                if (currentRideId > 0 && speed > 0) {
+                    rideDistanceKm += speed * dtSec / 3600.0;
+                }
+                if (coolant > rideMaxCoolant) rideMaxCoolant = coolant;
+            }
+        }
+
+        handleDtcIfNeeded();
     }
 
-    private void stopRideTracking() {
-        if (locationManager != null) {
-            try {
-                locationManager.removeUpdates(locationListener);
-            } catch (Exception ignored) {}
+    private void handleDtcIfNeeded() {
+        int code;
+        int count;
+        boolean warning;
+        synchronized (pendingTelemetry) {
+            code = pendingTelemetry.dtcCode;
+            count = pendingTelemetry.dtcCount;
+            warning = pendingTelemetry.warningLamp;
+        }
+        if (code > 0 && code != lastDtcCode) {
+            lastDtcCode = code;
+            DtcManager.DtcInfo info = DtcManager.lookup(code);
+            rideDb.insertDtcLog(System.currentTimeMillis(), code, info.title,
+                    info.severity.name(), inMemoryOdo);
+            broadcastDtc(code);
+            postAlert("dtc_" + code, "Check engine: DTC " + code, info.title);
+        } else if (code == 0 && lastDtcCode != 0) {
+            lastDtcCode = 0;
+            broadcastDtc(0);
+        } else if (warning && lastDtcCode == 0 && count > 0) {
+            // Warning lamp on but no decoded code yet.
+            long now = System.currentTimeMillis();
+            Long last = dtcCooldowns.get(0L);
+            if (last == null || now - last > 10 * 60 * 1000L) {
+                dtcCooldowns.put(0L, now);
+                postAlert("dtc_warning", "Check engine light", "The ECU reports an active fault.");
+            }
+        }
+    }
+
+    private void rescheduleProcessor() {
+        if (mainHandler == null) return;
+        if (processorRunnable != null) {
+            mainHandler.removeCallbacks(processorRunnable);
+            processorRunnable = null;
+        }
+        // Fully idle (bound but not linked, no ride, no GPS): do not wake the
+        // CPU every couple of seconds. startSession()/onBind() reschedule when
+        // there is real work again.
+        if (!isConnected && !sessionActive && currentRideId <= 0 && !locationUpdatesActive) {
+            return;
+        }
+        processorRunnable = this::processTick;
+        long interval = boundClients.get() > 0
+                ? settings.foregroundIntervalMs() : settings.backgroundIntervalMs();
+        mainHandler.postDelayed(processorRunnable, interval);
+    }
+
+    private void stopProcessor() {
+        if (processorRunnable != null) {
+            mainHandler.removeCallbacks(processorRunnable);
+            processorRunnable = null;
+        }
+    }
+
+    private void processTick() {
+        long now = System.currentTimeMillis();
+        long intervalMs = lastProcessMs == 0L ? 5_000L
+                : Math.min(15_000L, Math.max(500L, now - lastProcessMs));
+        lastProcessMs = now;
+
+        int speed;
+        int rpm;
+        int coolant;
+        double throttle;
+        double odo;
+        double instantMileage;
+        double fuelRate;
+        boolean warning;
+        int dtcCode;
+        int dtcCount;
+        synchronized (pendingTelemetry) {
+            latestTelemetry.copyFrom(pendingTelemetry);
+            speed = latestTelemetry.speedKmh;
+            rpm = latestTelemetry.engineRpm;
+            coolant = latestTelemetry.coolantTemp;
+            throttle = latestTelemetry.throttlePct;
+            odo = latestTelemetry.odometerKm;
+            instantMileage = latestTelemetry.instantMileageKmL;
+            fuelRate = latestTelemetry.fuelConsumptionRateLh;
+            warning = latestTelemetry.warningLamp;
+            dtcCode = latestTelemetry.dtcCode;
+            dtcCount = latestTelemetry.dtcCount;
+        }
+
+        // A refuel or tank-size change happens in the UI while this service is
+        // running. Apply any pending consumption first, then rebase the
+        // in-memory estimate on the new persistent value so the next tick does
+        // not overwrite the fill-up with a stale number.
+        int fuelRevision = fuelManager.getRevision();
+        if (fuelRevision != lastFuelRevision) {
+            if (lastFuelRevision != -1 && unsavedFuelL > 0.0) {
+                fuelManager.consumeFuel(unsavedFuelL);
+                unsavedFuelL = 0.0;
+            }
+            inMemoryFuelL = fuelManager.getRemainingLitres();
+            lastFuelRevision = fuelRevision;
+        }
+
+        double displayFuel = Math.max(0.0, inMemoryFuelL - unsavedFuelL);
+        double tripAvg = 0.0;
+        if (rideDistanceKm > 0.05 && rideFuelL > 0.002) {
+            tripAvg = rideDistanceKm / rideFuelL;
+        } else if (instantMileage > 0.5) {
+            tripAvg = instantMileage;
+        }
+
+        double bestMileage = fuelManager.getBestMileageKmL(tripAvg);
+        double range = fuelManager.getEstimatedRangeKm(bestMileage);
+
+        latestTelemetry.tripFuelConsumedL = rideFuelL;
+        latestTelemetry.tripAvgMileageKmL = tripAvg;
+        latestTelemetry.remainingFuelL = displayFuel;
+        latestTelemetry.speedKmh = speed;
+        latestTelemetry.engineRpm = rpm;
+        latestTelemetry.coolantTemp = coolant;
+        latestTelemetry.throttlePct = throttle;
+        latestTelemetry.odometerKm = odo;
+        latestTelemetry.warningLamp = warning;
+        latestTelemetry.dtcCode = dtcCode;
+        latestTelemetry.dtcCount = dtcCount;
+
+        sInstantMileage = instantMileage;
+        sTripAvgMileage = tripAvg;
+        sFuelRemainingL = displayFuel;
+        sEstimatedRangeKm = range;
+        sLastUpdateMs = lastPacketMs;
+        sRideActive = currentRideId > 0;
+        sRideDistanceKm = rideDistanceKm;
+        sRideFuelL = rideFuelL;
+        sRideStartMs = rideStartMs;
+
+        if (odo > 0 && Math.abs(odo - inMemoryOdo) >= 0.1) {
+            inMemoryOdo = odo;
+            odoDirty = true;
+            sLatestBikeOdo = odo;
+        }
+
+        synchronized (sLatestTelemetry) {
+            sLatestTelemetry.copyFrom(latestTelemetry);
+        }
+
+        // A ride only exists once the bike actually moves; sitting with the
+        // ignition on should not create empty records or drain GPS.
+        if (sessionActive && currentRideId <= 0 && speed > 2) {
+            startRideTracking();
         }
 
         if (currentRideId > 0) {
-            long rideId = currentRideId;
-            boolean saved = rideDb.finalizeRide(rideId, System.currentTimeMillis());
-            currentRideId = -1;
-            AppLogManager.getInstance().log(TAG, "Finalized ride session #%d (saved=%b)", rideId, saved);
-            if (saved) {
-                Intent finishIntent = new Intent(BROADCAST_RIDE_FINISHED);
-                finishIntent.setPackage(getPackageName());
-                sendBroadcast(finishIntent);
+            if (speed > 1) {
+                rideMovingSec += (int) Math.max(1, intervalMs / 1000);
+                stationarySinceMs = 0L;
+            } else if (stationarySinceMs == 0L) {
+                stationarySinceMs = now;
+            }
+            recordPointIfDue(now);
+        }
+
+        if (isMissedCall && missedCallAtMs > 0 && now - missedCallAtMs > 60_000L) {
+            isMissedCall = false;
+            missedCallAtMs = 0L;
+            notificationDirty = true;
+        }
+
+        if (now - lastPersistMs >= 30_000L) flushState();
+        if (isConnected && now - lastClockSyncMs >= 60_000L) {
+            sendClockAndBatterySync();
+            lastClockSyncMs = now;
+        }
+        if (isConnected && (isIncomingCall || notificationDirty)
+                && now - lastNotificationSyncMs >= 2_000L) {
+            sendNotificationSync();
+            lastNotificationSyncMs = now;
+            notificationDirty = false;
+        }
+        updateServiceNotificationIfUseful(now);
+        // Only evaluate alerts and GPS motion against a live packet. After the
+        // link drops the last snapshot can be minutes old; acting on it would
+        // fire phantom overspeed/coolant alerts and keep GPS awake.
+        boolean fresh = lastPacketMs > 0 && now - lastPacketMs < 10_000L;
+        if (isConnected && fresh) {
+            checkAlerts(now, speed, coolant, displayFuel);
+            manageGpsForMotion(now, speed);
+        } else if (currentRideId > 0) {
+            manageGpsForMotion(now, 0);
+        }
+        rescheduleProcessor();
+    }
+
+    private void updateServiceNotificationIfUseful(long now) {
+        if (!isConnected) return;
+        /* Keep the persistent notification informative without churn. */
+        if (now - lastServiceNotificationMs < 30_000L) return;
+        lastServiceNotificationMs = now;
+        String text = String.format(Locale.getDefault(), "%s • %s",
+                Units.speed(settings, latestTelemetry.speedKmh),
+                Units.mileage(settings, latestTelemetry.instantMileageKmL));
+        updateServiceNotification(text);
+    }
+
+    private void checkAlerts(long now, int speed, int coolant, double fuelL) {
+        if (settings.alertOverspeed() && speed > settings.overspeedKmh()) {
+            postAlert("overspeed", "Slow down", "You are above "
+                    + Units.speed(settings, settings.overspeedKmh()) + ".");
+        }
+        if (settings.alertCoolant() && coolant >= settings.coolantLimitC()) {
+            postAlert("coolant", "Coolant temperature high",
+                    Units.temp(settings, coolant) + " — ease off and let the engine cool.");
+        }
+        if (settings.alertLowFuel() && fuelL > 0 && fuelL <= settings.getReserveL()) {
+            postAlert("low_fuel", "Low fuel",
+                    Units.fuel(settings, fuelL) + " left (~" + Units.shortDistance(settings,
+                            fuelManager.getEstimatedRangeKm(fuelManager.getBestMileageKmL(sTripAvgMileage))) + ").");
+        }
+        if (settings.alertColdEngine() && coolant > 0 && coolant < 55 && latestTelemetry.engineRpm > 4500) {
+            postAlert("cold_engine", "Engine is still cold",
+                    "Keep the revs lower until " + Units.temp(settings, 55) + ".");
+        }
+        if (settings.alertService() && currentRideId > 0 && now - lastAlertServiceCheckMs > 6 * 60 * 60 * 1000L) {
+            lastAlertServiceCheckMs = now;
+            int due = maintenanceManager.getDueItemCount();
+            if (due > 0) {
+                postAlert("service", "Maintenance due",
+                        due + (due == 1 ? " item needs attention." : " items need attention."));
             }
         }
     }
+
+    private void manageGpsForMotion(long now, int speed) {
+        if (currentRideId <= 0) {
+            stopLocationUpdates();
+            return;
+        }
+        if (speed <= 1) {
+            if (stationarySinceMs == 0L) stationarySinceMs = now;
+            if (locationUpdatesActive && now - stationarySinceMs > 30_000L) {
+                stopLocationUpdates();
+            }
+        } else if (!locationUpdatesActive) {
+            startLocationUpdates();
+        }
+    }
+
+    private void recordPointIfDue(long now) {
+        if (currentRideId <= 0) return;
+        // No GPS or database writes while stationary — moving again records
+        // immediately because lastPointRecordMs is only advanced on a write.
+        if (latestTelemetry.speedKmh <= 1) return;
+        if (now - lastPointRecordMs < 2000L) return;
+        lastPointRecordMs = now;
+
+        boolean hasGps = currentLocation != null
+                && now - currentLocationMs < 15_000L
+                && currentLocation.getAccuracy() <= 100f;
+        double lat = hasGps ? currentLocation.getLatitude() : 0.0;
+        double lon = hasGps ? currentLocation.getLongitude() : 0.0;
+        float accuracy = hasGps ? currentLocation.getAccuracy() : 0f;
+
+        rideDb.insertPoint(currentRideId, now, lat, lon, hasGps, accuracy,
+                latestTelemetry.speedKmh, latestTelemetry.engineRpm,
+                latestTelemetry.throttlePct, latestTelemetry.coolantTemp);
+    }
+
+    // ---------------------------------------------------------------------
+    // Session / ride lifecycle
+    // ---------------------------------------------------------------------
+
+    private void startSession() {
+        if (sessionActive) return;
+        sessionActive = true;
+        sSessionActive = true;
+        handshakeComplete = true;
+        broadcastStatus("Connected & syncing");
+        sRideActive = false;
+        if (bluetoothGatt != null) {
+            try { bluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED); } catch (Exception ignored) {}
+        }
+        startPeriodicSync();
+        lastProcessMs = 0L;
+        rescheduleProcessor();
+        sendClockAndBatterySync();
+        lastClockSyncMs = System.currentTimeMillis();
+    }
+
+    private void startRideTracking() {
+        if (currentRideId > 0) return;
+        rideStartOdo = latestTelemetry.odometerKm > 0 ? latestTelemetry.odometerKm : inMemoryOdo;
+        rideDistanceKm = 0.0;
+        rideFuelL = 0.0;
+        rideMovingSec = 0;
+        rideMaxCoolant = 0;
+        rideStartMs = System.currentTimeMillis();
+        lastPointRecordMs = 0L;
+        stationarySinceMs = 0L;
+        currentRideId = rideDb.startNewRide(rideStartMs, rideStartOdo);
+        sRideActive = true;
+        sRideStartMs = rideStartMs;
+        sRideDistanceKm = 0.0;
+        sRideFuelL = 0.0;
+        AppLogManager.getInstance().log(TAG, "Ride started (odo=%.1f km)", rideStartOdo);
+        startLocationUpdates();
+    }
+
+    private void finishRide() {
+        if (currentRideId <= 0) {
+            stopLocationUpdates();
+            return;
+        }
+        long id = currentRideId;
+        currentRideId = -1;
+        flushState();
+        stopLocationUpdates();
+
+        boolean saved = rideDb.finalizeRide(id, System.currentTimeMillis(), rideDistanceKm,
+                rideMovingSec, rideMaxCoolant, inMemoryOdo, rideFuelL);
+        AppLogManager.getInstance().log(TAG, "Ride finished (saved=%b, %.2f km)", saved, rideDistanceKm);
+
+        sRideActive = false;
+        sRideDistanceKm = 0.0;
+        sRideFuelL = 0.0;
+        sRideStartMs = 0L;
+        rideDistanceKm = 0.0;
+        rideFuelL = 0.0;
+        rideMovingSec = 0;
+        rideMaxCoolant = 0;
+        rideStartMs = 0L;
+
+        if (saved) {
+            RideDatabaseHelper.RideSummary summary = rideDb.getRide(id);
+            Intent intent = new Intent(BROADCAST_RIDE_FINISHED);
+            intent.setPackage(getPackageName());
+            intent.putExtra(EXTRA_RIDE_ID, id);
+            sendBroadcast(intent);
+            postRideRecap(summary);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private void flushState() {
+        if (unsavedFuelL > 0.0) {
+            fuelManager.consumeFuel(unsavedFuelL);
+            inMemoryFuelL = Math.max(0.0, inMemoryFuelL - unsavedFuelL);
+            unsavedFuelL = 0.0;
+        }
+        if (odoDirty && inMemoryOdo > 0) {
+            prefs.edit().putFloat(PREF_LATEST_BIKE_ODO, (float) inMemoryOdo).apply();
+            maintenanceManager.updateOdometer(inMemoryOdo);
+            odoDirty = false;
+        }
+        lastPersistMs = System.currentTimeMillis();
+    }
+
+    // ---------------------------------------------------------------------
+    // Periodic CCU sync
+    // ---------------------------------------------------------------------
 
     private void startPeriodicSync() {
         stopPeriodicSync();
@@ -975,12 +1364,16 @@ public class XsrBleService extends Service {
             @Override
             public void run() {
                 if (isConnected && bluetoothGatt != null && rxCharacteristic != null) {
-                    sendClockAndBatterySync();
-
-                    // Send notification flags after 100ms
-                    mainHandler.postDelayed(() -> sendNotificationSync(), 100);
-
-                    mainHandler.postDelayed(this, 1000);
+                    long now = System.currentTimeMillis();
+                    if (now - lastClockSyncMs >= 60_000L) {
+                        sendClockAndBatterySync();
+                        lastClockSyncMs = now;
+                    }
+                    if (isIncomingCall && now - lastNotificationSyncMs >= 2_000L) {
+                        sendNotificationSync();
+                        lastNotificationSyncMs = now;
+                    }
+                    mainHandler.postDelayed(this, 5_000L);
                 }
             }
         };
@@ -995,109 +1388,228 @@ public class XsrBleService extends Service {
     }
 
     private void sendClockAndBatterySync() {
+        if (!isConnected || rxCharacteristic == null) return;
         Calendar cal = Calendar.getInstance();
-        int year = cal.get(Calendar.YEAR);
-        int month = cal.get(Calendar.MONTH) + 1;
-        int day = cal.get(Calendar.DAY_OF_MONTH);
-        int hour = cal.get(Calendar.HOUR_OF_DAY);
-        int minute = cal.get(Calendar.MINUTE);
-        int second = cal.get(Calendar.SECOND);
-
         byte[] packet = YamahaProtocol.buildBatteryAndClockPacket(
-                year, month, day, hour, minute, second,
-                currentBatteryLevel,
-                syncCounter++
-        );
-
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1,
+                cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND),
+                currentBatteryLevel, syncCounter++);
         enqueueWrite(packet);
     }
 
     private void sendNotificationSync() {
+        if (!isConnected || rxCharacteristic == null) return;
         byte[] packet = YamahaProtocol.buildNotificationPacket(
-                isIncomingCall,
-                isMissedCall,
-                hasUnreadMessage,
-                false,
-                syncCounter++
-        );
-
+                isIncomingCall, isMissedCall, hasUnreadMessage, false, syncCounter++);
         enqueueWrite(packet);
+    }
+
+    // ---------------------------------------------------------------------
+    // GPS
+    // ---------------------------------------------------------------------
+
+    private void startLocationUpdates() {
+        if (locationUpdatesActive || locationManager == null) return;
+        if (!hasLocationPermission()) return;
+        try {
+            boolean gps = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+            boolean network = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            if (gps) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                        2000L, 5f, locationListener, Looper.getMainLooper());
+                locationUpdatesActive = true;
+            } else if (network) {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
+                        3000L, 10f, locationListener, Looper.getMainLooper());
+                locationUpdatesActive = true;
+            }
+            Location last = locationManager.getLastKnownLocation(
+                    gps ? LocationManager.GPS_PROVIDER : LocationManager.NETWORK_PROVIDER);
+            if (last != null && System.currentTimeMillis() - last.getTime() < 60_000L) {
+                currentLocation = last;
+                currentLocationMs = last.getTime();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void stopLocationUpdates() {
+        if (locationManager != null) {
+            try { locationManager.removeUpdates(locationListener); } catch (Exception ignored) {}
+        }
+        locationUpdatesActive = false;
     }
 
     private void saveParkedLocation() {
         try {
-            if (locationManager != null) {
-                Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            long now = System.currentTimeMillis();
+            Location location = null;
+            if (currentLocation != null && now - currentLocationMs < 10 * 60_000L) {
+                location = currentLocation;
+            }
+            if (location == null && locationManager != null && hasLocationPermission()) {
+                try { location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
                 if (location == null) {
-                    location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                    try { location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
                 }
-                if (location != null) {
-                    prefs.edit()
-                            .putFloat(PREF_PARKED_LAT, (float) location.getLatitude())
-                            .putFloat(PREF_PARKED_LON, (float) location.getLongitude())
-                            .putLong(PREF_PARKED_TIME, System.currentTimeMillis())
-                            .apply();
-                }
+            }
+            if (location != null) {
+                prefs.edit()
+                        .putFloat(PREF_PARKED_LAT, (float) location.getLatitude())
+                        .putFloat(PREF_PARKED_LON, (float) location.getLongitude())
+                        .putLong(PREF_PARKED_TIME, now)
+                        .apply();
             }
         } catch (Exception ignored) {}
     }
 
-    private void setupCallStateListener() {
+    // ---------------------------------------------------------------------
+    // GATT writes
+    // ---------------------------------------------------------------------
+
+    private void enqueueWrite(byte[] packet) {
+        if (packet == null) return;
+        if (writeQueue.size() > 16) writeQueue.poll();
+        writeQueue.add(packet);
+        processNextWrite();
+    }
+
+    private synchronized void processNextWrite() {
+        if (isWriting.get()) return;
+        byte[] packet = writeQueue.poll();
+        if (packet == null) return;
+        if (bluetoothGatt == null || rxCharacteristic == null) {
+            writeQueue.clear();
+            return;
+        }
+
+        isWriting.set(true);
+        int result;
+        try {
+            result = bluetoothGatt.writeCharacteristic(rxCharacteristic, packet,
+                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+        } catch (Exception e) {
+            isWriting.set(false);
+            mainHandler.postDelayed(this::processNextWrite, 60);
+            return;
+        }
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "TX " + packet.length + " bytes (res=" + result + ")");
+        }
+        mainHandler.postDelayed(() -> {
+            if (isWriting.compareAndSet(true, false)) processNextWrite();
+        }, 60);
+    }
+
+    private void closeGatt() {
+        writeQueue.clear();
+        isWriting.set(false);
+        if (bluetoothGatt != null) {
+            try {
+                bluetoothGatt.disconnect();
+                bluetoothGatt.close();
+            } catch (Exception ignored) {}
+            bluetoothGatt = null;
+        }
+        rxCharacteristic = null;
+        isConnected = false;
+        sIsConnected = false;
+    }
+
+    private void disconnectGatt(boolean finalizeRide) {
+        stopScan();
+        stopPeriodicSync();
+        stopProcessor();
+        if (finalizeRide) finishRide();
+        else stopLocationUpdates();
+        writeQueue.clear();
+        isWriting.set(false);
+        handshakeComplete = false;
+        sessionActive = false;
+        sSessionActive = false;
+        authCandidates.clear();
+        authCandidateIndex = 0;
+        closeGatt();
+        packetCount = 0;
+        sPacketCount = 0;
+    }
+
+    // ---------------------------------------------------------------------
+    // Phone call relay
+    // ---------------------------------------------------------------------
+
+    private void registerTelephonyIfAllowed() {
+        if (!hasPhonePermission()) return;
+        if (callStateCallback != null) return;
         TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
         if (tm == null) return;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Executor executor = getMainExecutor();
-            tm.registerTelephonyCallback(executor, new CallStateCallback());
+        try {
+            callStateCallback = new CallStateCallback();
+            tm.registerTelephonyCallback(getMainExecutor(), callStateCallback);
+        } catch (Exception e) {
+            callStateCallback = null;
+            Log.w(TAG, "Telephony callback unavailable: " + e.getMessage());
         }
     }
 
-    private class CallStateCallback extends TelephonyCallback implements TelephonyCallback.CallStateListener {
+    private void unregisterTelephony() {
+        if (callStateCallback == null) return;
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+            if (tm != null) tm.unregisterTelephonyCallback(callStateCallback);
+        } catch (Exception ignored) {
+        }
+        callStateCallback = null;
+    }
+
+    private class CallStateCallback extends TelephonyCallback
+            implements TelephonyCallback.CallStateListener {
         @Override
         public void onCallStateChanged(int state) {
-            isIncomingCall = (state == TelephonyManager.CALL_STATE_RINGING);
-            if (isConnected) {
-                sendNotificationSync();
+            boolean ringing = state == TelephonyManager.CALL_STATE_RINGING;
+            if (ringing) {
+                isIncomingCall = true;
+                isMissedCall = false;
+                wasRinging = true;
+            } else if (state == TelephonyManager.CALL_STATE_IDLE) {
+                isIncomingCall = false;
+                if (wasRinging) isMissedCall = true;
+                wasRinging = false;
+            } else if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                isIncomingCall = false;
+                isMissedCall = false;
+                wasRinging = false;
             }
+            notificationDirty = true;
+            if (isConnected) sendNotificationSync();
         }
     }
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        AppLogManager.getInstance().log(TAG, "XsrBleService onDestroy");
-        stopScan();
-        disconnectGatt();
-        try {
-            unregisterReceiver(batteryReceiver);
-        } catch (Exception ignored) {}
+    // ---------------------------------------------------------------------
+    // Permissions / cleanup
+    // ---------------------------------------------------------------------
+
+    private boolean hasBluetoothPermission() {
+        return checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
-    @Override
-    public IBinder onBind(Intent intent) {
-        boundClients++;
-        AppLogManager.getInstance().log(TAG, "Client bound (active clients: %d)", boundClients);
-        return binder;
+    private boolean hasLocationPermission() {
+        return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
-    @Override
-    public boolean onUnbind(Intent intent) {
-        boundClients = Math.max(0, boundClients - 1);
-        AppLogManager.getInstance().log(TAG, "Client unbound (remaining clients: %d)", boundClients);
-        checkStopIfDisconnected();
-        return super.onUnbind(intent);
+    private boolean hasPhonePermission() {
+        return checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
-    /**
-     * Battery Saver:
-     * If motorcycle is NOT connected and no Activity/UI is bound, shut down service completely.
-     */
     public void checkStopIfDisconnected() {
-        if (!isConnected && boundClients <= 0) {
-            AppLogManager.getInstance().log(TAG, "Battery Saver: Bike disconnected and no active UI. Shutting down service.");
-            stopScan();
-            disconnectGatt();
-            stopForeground(true);
+        if (!isConnected && !sessionActive && !isScanning && boundClients.get() <= 0) {
+            AppLogManager.getInstance().log(TAG, "Battery saver: stopping idle service");
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
         }
     }

@@ -1,16 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_dark">#0D1117</color>
-    <color name="card_bg">#161B26</color>
-    <color name="stat_bg">#10141D</color>
-    <color name="accent_yamaha_blue">#0057B7</color>
-    <color name="accent_cyan">#00E5FF</color>
-    <color name="accent_green">#00E676</color>
-    <color name="accent_amber">#FFB300</color>
-    <color name="accent_orange">#FF6D00</color>
-    <color name="accent_red">#FF4D4D</color>
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#9DA8B6</color>
-    <color name="text_muted">#626E80</color>
-    <color name="border_color">#263044</color>
+    <!-- Core surfaces (dark, Material 3) -->
+    <color name="bg_dark">#080B11</color>
+    <color name="surface">#111722</color>
+    <color name="surface_variant">#1A2231</color>
+    <color name="surface_high">#212B3D</color>
+    <color name="outline">#2C3748</color>
+    <color name="outline_color">#2C3748</color>
+
+    <!-- Brand / accent -->
+    <color name="primary">#4D8DFF</color>
+    <color name="on_primary">#04122B</color>
+    <color name="primary_dim">#1D3A6E</color>
+    <color name="secondary">#22D3EE</color>
+    <color name="on_secondary">#001F24</color>
+    <color name="tertiary">#A78BFA</color>
+
+    <!-- Status -->
+    <color name="accent_green">#34D399</color>
+    <color name="accent_amber">#FBBF24</color>
+    <color name="accent_orange">#FB923C</color>
+    <color name="accent_red">#F87171</color>
+    <color name="accent_cyan">#22D3EE</color>
+    <color name="accent_yamaha_blue">#4D8DFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#F5F8FF</color>
+    <color name="text_secondary">#A7B3C7</color>
+    <color name="text_muted">#6C7A90</color>
+
+    <!-- Legacy aliases used by older layouts -->
+    <color name="card_bg">#111722</color>
+    <color name="stat_bg">#0D1320</color>
+    <color name="border_color">#2C3748</color>
+
+    <color name="ic_launcher_background">#0B1220</color>
+    <color name="scrim">#B3000000</color>
+    <color name="chart_line">#4D8DFF</color>
+    <color name="chart_fill">#334D8DFF</color>
 </resources>
