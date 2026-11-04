@@ -141,6 +141,14 @@ public class MaintenanceFragment extends BaseFragment {
             row.progress.setProgressCompat(percent, true);
         }
 
+        if (item.lastServiceTime <= 0 && !settings.isMaintenanceBaselined()) {
+            row.status.setText("NEW");
+            row.status.setTextColor(0xFF4D8DFF);
+            row.progress.setIndicatorColor(0xFF4D8DFF);
+            row.remaining.setText(Units.shortDistance(settings, remaining) + " remaining • never serviced");
+            return;
+        }
+
         if (item.isOverdue(odo)) {
             row.status.setText("OVERDUE");
             row.status.setTextColor(0xFFF87171);
@@ -176,14 +184,42 @@ public class MaintenanceFragment extends BaseFragment {
         EditText cost = content.findViewById(R.id.inputServiceCost);
 
         new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Log this service?")
+                .setMessage("This resets the " + item.title.toLowerCase(Locale.getDefault())
+                        + " interval to 0 at " + Units.distance(settings, serviceOdo) + ". "
+                        + "Add a note and justification, then confirm.")
                 .setView(content)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.action_save, (dialog, which) -> {
                     String noteText = notes.getText().toString().trim();
+                    String justification = noteText;
+                    if (justification.isEmpty()) {
+                        Toast.makeText(requireContext(),
+                                "Add a note explaining why this service was done",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     double costValue = parseDouble(cost.getText().toString());
-                    maintenance.markServiced(id, serviceOdo,
-                            noteText.isEmpty() ? null : noteText, costValue);
+                    maintenance.markServiced(id, serviceOdo, noteText, costValue);
                     Toast.makeText(requireContext(), "Service logged", Toast.LENGTH_SHORT).show();
+                    refresh();
+                })
+                .show();
+    }
+
+    private void showResetCountersDialog() {
+        double odo = currentOdometer();
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Reset all service counters?")
+                .setMessage("Sets every item's last service to the current odometer "
+                        + Units.distance(settings, odo) + " "
+                        + "and clears all service timestamps. "
+                        + "This is for a new motorcycle or a corrected odometer — "
+                        + "it does not erase your service history.")
+                .setNegativeButton(R.string.action_cancel, null)
+                .setPositiveButton("Reset to 0", (dialog, which) -> {
+                    maintenance.resetAllToZero();
+                    Toast.makeText(requireContext(), "Service counters reset", Toast.LENGTH_SHORT).show();
                     refresh();
                 })
                 .show();

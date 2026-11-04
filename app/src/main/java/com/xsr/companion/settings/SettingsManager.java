@@ -197,4 +197,8 @@ public class SettingsManager {
     public void setMaintenanceBaselined() {
         prefs.edit().putBoolean(KEY_BASELINED, true).apply();
     }
+
+    public void clearMaintenanceBaselined() {
+        prefs.edit().putBoolean(KEY_BASELINED, false).apply();
+    }
 }

@@ -132,8 +132,9 @@ public class MaintenanceManager {
         SharedPreferences.Editor editor = prefs.edit();
         for (ServiceItem item : items) {
             String key = KEY_LAST_PREFIX + item.id;
-            // Treat a stored 0 as "unknown" too: a service logged before the
-            // first odometer sync would otherwise make every item look overdue.
+            // A stored 0 means "unknown" — a service logged before the first
+            // odometer sync must not make every item look overdue. The very
+            // first real service after syncing will overwrite this origin.
             if (!prefs.contains(key) || prefs.getFloat(key, 0.0f) <= 0.0f) {
                 item.lastServiceOdoKm = odoKm;
                 editor.putFloat(key, (float) odoKm);
@@ -177,6 +178,33 @@ public class MaintenanceManager {
         Map<String, ServiceItem> map = new LinkedHashMap<>();
         for (ServiceItem item : getItems()) map.put(item.id, item);
         return map;
+    }
+
+    /**
+     * Treats the bike's current odometer as the origin for every item. Used
+     * when the rider confirms this is a new motorcycle (or a corrected
+     * odometer): each interval then counts down from zero service history.
+     */
+    public synchronized void resetAllToZero() {
+        double origin = Math.max(0.0, getCurrentOdometer());
+        SharedPreferences.Editor editor = prefs.edit();
+        for (ServiceItem item : items) {
+            item.lastServiceOdoKm = origin;
+            item.lastServiceTime = 0L;
+            editor.putFloat(KEY_LAST_PREFIX + item.id, (float) origin);
+            editor.putLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
+        }
+        editor.apply();
+        settings.setMaintenanceBaselined();
+        if (origin > 0) {
+            db.insertServiceLog("reset", System.currentTimeMillis(), origin,
+                    "Maintenance counters reset to current odometer", 0.0);
+        }
+    }
+
+    /** Clears the "baselined" flag so a future {@link #updateOdometer} can re-seed. */
+    public synchronized void unbaseline() {
+        settings.clearMaintenanceBaselined();
     }
 
     public synchronized void markServiced(String id, String notes, double cost) {

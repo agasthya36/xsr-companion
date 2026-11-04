@@ -102,6 +102,17 @@
             android:orientation="vertical" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnResetCounters"
+            style="@style/Widget.Xsr.Button.Outlined"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Reset counters to 0"
+            android:textColor="@color/accent_amber"
+            app:icon="@drawable/ic_warning"
+            app:iconSize="16dp" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnServiceHistory"
             style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="match_parent"

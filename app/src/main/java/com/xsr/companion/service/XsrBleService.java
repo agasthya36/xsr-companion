@@ -293,7 +293,11 @@ public class XsrBleService extends Service {
         fuelManager = new FuelManager(this);
         // Baseline maintenance to the last known odometer even before the
         // first successful BLE sync, so the service screen is useful offline.
-        maintenanceManager.updateOdometer(prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f));
+        // Skipped when the last sync is stale — updateOdometer seeds from the
+        // freshest reading during flushState instead.
+        float seededOdo = prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f);
+        float lastOdo = prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f);
+        if (seededOdo > 0) maintenanceManager.updateOdometer(seededOdo);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         mainHandler = new Handler(Looper.getMainLooper());
 
