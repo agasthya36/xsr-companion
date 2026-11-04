@@ -32,9 +32,10 @@ Version 2.1 is a full Material 3 rewrite with five focused screens, automatic ri
 - UI refreshes every **2 s** while a screen is open; the foreground service processes at **5 s** in the background.
 - Telemetry frames are parsed at most **5 Hz**, even though the CCU streams at 10 Hz.
 - Fuel is integrated using **real elapsed time** and flushed to prefs only every ~30 s.
-- GPS is adaptive: 2 s / 5 m while moving, stopped after 30 s stationary, resumed when wheel speed exceeds 2 km/h.
+- GPS is adaptive: 3 s / 8 m while moving, stopped after 30 s stationary, resumed when wheel speed exceeds 2 km/h.
 - BLE uses `CONNECTION_PRIORITY_BALANCED`, low-power scanning, a 12 s scan timeout, and stops the service when idle and unbound.
-- No per-packet broadcasts or database writes. Ride points are written only while moving.
+- No per-packet broadcasts or database writes. Ride points are written only while moving, once per GPS interval.
+- The route map only runs while it is open; tiles stop loading when you leave it.
 
 ### Privacy / release hardening
 - Network access is limited to Google Maps tiles in the ride route viewer.
@@ -48,7 +49,7 @@ Version 2.1 is a full Material 3 rewrite with five focused screens, automatic ri
 
 ### Riding
 - Zero-click ride recording starts when the bike moves, not merely when the ignition is on.
-- Records wheel speed, RPM, throttle, coolant, and GPS every 2 s.
+- Records wheel speed, RPM, throttle, coolant, and GPS every 3 s.
 - Discards stationary sessions under 50 m / 5 km/h so the garage never fills with empty rides.
 - Standard GPX 1.1 export with Garmin TrackPoint extensions, plus CSV export of rides, fuel, and service history.
 - Ride route on Google Maps with start/finish markers, drawn from the recorded GPS points.

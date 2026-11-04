@@ -1365,7 +1365,7 @@ public class XsrBleService extends Service {
         // No GPS or database writes while stationary — moving again records
         // immediately because lastPointRecordMs is only advanced on a write.
         if (latestTelemetry.speedKmh <= 1) return;
-        if (now - lastPointRecordMs < 2000L) return;
+        if (now - lastPointRecordMs < 3000L) return;
         lastPointRecordMs = now;
 
         boolean hasGps = currentLocation != null
@@ -1534,11 +1534,11 @@ public class XsrBleService extends Service {
             boolean network = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
             if (gps) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                        2000L, 5f, locationListener, Looper.getMainLooper());
+                        3000L, 8f, locationListener, Looper.getMainLooper());
                 locationUpdatesActive = true;
             } else if (network) {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
-                        3000L, 10f, locationListener, Looper.getMainLooper());
+                        5000L, 15f, locationListener, Looper.getMainLooper());
                 locationUpdatesActive = true;
             }
             Location last = locationManager.getLastKnownLocation(

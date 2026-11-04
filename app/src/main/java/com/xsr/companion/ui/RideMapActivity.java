@@ -157,6 +157,10 @@ public class RideMapActivity extends AppCompatActivity implements OnMapReadyCall
 
         map.getUiSettings().setMapToolbarEnabled(false);
         map.getUiSettings().setZoomControlsEnabled(false);
+        // Only the route and base tiles are needed; skip extra render layers.
+        map.setBuildingsEnabled(false);
+        map.setIndoorEnabled(false);
+        map.setTrafficEnabled(false);
         try {
             map.setMapStyle(MapStyleOptions.loadRawResourceStyle(this, R.raw.map_style_dark));
         } catch (Exception ignored) {
