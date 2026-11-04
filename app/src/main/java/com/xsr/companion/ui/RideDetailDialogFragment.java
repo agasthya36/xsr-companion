@@ -108,18 +108,17 @@ public class RideDetailDialogFragment extends DialogFragment {
 
         addStatGrid(container, new String[][]{
                 {"Distance", Units.distance(settings, summary.distanceKm)},
-                {"Moving time", summary.getFormattedMovingTime()},
-                {"Total time", summary.getFormattedDuration()},
-                {"Average speed", Units.speed(settings, summary.avgSpeedKmh)},
-                {"Top speed", Units.speed(settings, summary.topSpeedKmh)},
-                {"Max RPM", String.format(Locale.getDefault(), "%,d", summary.maxRpm)},
-                {"Average RPM", String.format(Locale.getDefault(), "%,d", summary.avgRpm)},
+                {"Moving / total time", summary.getFormattedMovingTime()
+                        + " / " + summary.getFormattedDuration()},
+                {"Avg / top speed", Units.speedValue(settings, summary.avgSpeedKmh)
+                        + " / " + Units.speed(settings, summary.topSpeedKmh)},
+                {"Avg / max RPM", String.format(Locale.getDefault(), "%,d", summary.avgRpm)
+                        + " / " + String.format(Locale.getDefault(), "%,d", summary.maxRpm)},
                 {"Max coolant", Units.temp(settings, summary.maxCoolant)},
                 {"Fuel used", Units.fuel(settings, summary.fuelUsedL)},
                 {"Mileage", Units.mileage(settings, summary.avgMileageKmL)},
+                {"Odometer", formatOdometerRange(summary.startOdoKm, summary.endOdoKm)},
         });
-        addStatWide(container, "Odometer", Units.distance(settings, summary.startOdoKm)
-                + " → " + Units.distance(settings, summary.endOdoKm), false);
         if (summary.notes != null && !summary.notes.trim().isEmpty()) {
             addStatWide(container, "Notes", summary.notes, true);
         }
@@ -177,6 +176,14 @@ public class RideDetailDialogFragment extends DialogFragment {
         valueView.setMaxLines(multiLine ? 4 : 1);
         labelView.setText(label);
         return tile;
+    }
+
+    private String formatOdometerRange(double startKm, double endKm) {
+        if (settings.isImperial()) {
+            return String.format(Locale.getDefault(), "%,.0f → %,.0f mi",
+                    startKm * Units.KM_TO_MI, endKm * Units.KM_TO_MI);
+        }
+        return String.format(Locale.getDefault(), "%,.0f → %,.0f km", startKm, endKm);
     }
 
     private int dp(int value) {
