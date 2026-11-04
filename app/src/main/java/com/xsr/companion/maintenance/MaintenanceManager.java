@@ -220,6 +220,20 @@ public class MaintenanceManager {
         settings.clearMaintenanceBaselined();
     }
 
+    public synchronized void setLastServiceFromHistory(String id, double odoKm, long when) {
+        for (ServiceItem item : items) {
+            if (item.id.equals(id)) {
+                item.lastServiceOdoKm = Math.max(0.0, odoKm);
+                item.lastServiceTime = when;
+                prefs.edit()
+                        .putFloat(KEY_LAST_PREFIX + id, (float) Math.max(0.0, odoKm))
+                        .putLong(KEY_LAST_PREFIX + id + "_time", when)
+                        .apply();
+                return;
+            }
+        }
+    }
+
     public synchronized void markServiced(String id, String notes, double cost) {
         markServiced(id, getCurrentOdometer(), notes, cost);
     }
