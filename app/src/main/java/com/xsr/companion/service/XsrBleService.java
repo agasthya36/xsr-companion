@@ -86,6 +86,9 @@ public class XsrBleService extends Service {
     public static final String ACTION_STOP_SERVICE = "com.xsr.companion.ACTION_STOP_SERVICE";
     public static final String ACTION_RECONNECT = "com.xsr.companion.ACTION_RECONNECT";
     public static final String ACTION_REFRESH_PHONE = "com.xsr.companion.ACTION_REFRESH_PHONE";
+    public static final String ACTION_BACKGROUND_CONNECT = "com.xsr.companion.ACTION_BACKGROUND_CONNECT";
+    public static final String ACTION_DISABLE_BACKGROUND = "com.xsr.companion.ACTION_DISABLE_BACKGROUND";
+    public static final String ACTION_REFRESH_GPS = "com.xsr.companion.ACTION_REFRESH_GPS";
 
     public static final String BROADCAST_STATUS = "com.xsr.companion.BROADCAST_STATUS";
     public static final String BROADCAST_RIDE_FINISHED = "com.xsr.companion.BROADCAST_RIDE_FINISHED";
@@ -98,6 +101,7 @@ public class XsrBleService extends Service {
     public static final String EXTRA_DEVICE_NAME = "extra_device_name";
     public static final String EXTRA_DTC_CODE = "extra_dtc_code";
     public static final String EXTRA_RIDE_ID = "extra_ride_id";
+    public static final String EXTRA_AUTO_CONNECT = "extra_auto_connect";
 
     public static final String PREFS_NAME = "xsr_companion_prefs";
     public static final String PREF_LAST_MAC = "last_connected_mac";
@@ -161,6 +165,17 @@ public class XsrBleService extends Service {
     private String connectInFlightAddress = null;
     private boolean skipBondedOnNextScan = false;
 
+    // App-open auto-connect: a short scan followed by exponential backoff.
+    private static final int MAX_AUTO_SCAN_ATTEMPTS = 6;
+    private static final long AUTO_SCAN_BASE_MS = 5_000L;
+    private boolean autoScanActive = false;
+    private int autoScanAttempts = 0;
+    private Runnable autoScanRunnable;
+
+    // Background mode: hold one low-power autoConnect request to the saved CCU.
+    private boolean backgroundConnectMode = false;
+    private boolean backgroundConnectPending = false;
+
     private static class AuthCandidate {
         final String passkey;
         final boolean updateBondingFlag;
@@ -199,6 +214,11 @@ public class XsrBleService extends Service {
     private volatile long currentLocationMs = 0L;
     private boolean locationUpdatesActive = false;
     private long stationarySinceMs = 0L;
+
+    private static final long GPS_DETAILED_INTERVAL_MS = 3_000L;
+    private static final float GPS_DETAILED_DISTANCE_M = 8f;
+    private static final long GPS_SAVER_INTERVAL_MS = 10_000L;
+    private static final float GPS_SAVER_DISTANCE_M = 25f;
 
     private volatile long currentRideId = -1;
     private long rideStartMs = 0L;
@@ -298,6 +318,9 @@ public class XsrBleService extends Service {
 
         ContextCompat.registerReceiver(this, batteryReceiver,
                 new IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED);
+        ContextCompat.registerReceiver(this, bluetoothStateReceiver,
+                new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED);
         createNotificationChannels();
         registerTelephonyIfAllowed();
 
@@ -309,30 +332,58 @@ public class XsrBleService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent != null ? intent.getAction() : null;
+        boolean backgroundStart = ACTION_BACKGROUND_CONNECT.equals(action);
         try {
-            startForegroundCompat();
+            startForegroundCompat(!backgroundStart || hasBackgroundLocationPermission());
         } catch (Exception e) {
             Log.e(TAG, "Unable to start foreground service: " + e.getMessage());
             stopSelf();
             return START_NOT_STICKY;
         }
 
-        String action = intent != null ? intent.getAction() : null;
         if (ACTION_START_SCAN.equals(action)) {
-            startScan();
+            boolean auto = intent.getBooleanExtra(EXTRA_AUTO_CONNECT, false);
+            if (auto) startAutoConnect();
+            else {
+                cancelAutoConnect();
+                startScan();
+            }
         } else if (ACTION_STOP_SCAN.equals(action)) {
+            cancelAutoConnect();
             stopScan();
         } else if (ACTION_DISCONNECT.equals(action)) {
             userDisconnect = true;
+            backgroundConnectMode = false;
+            cancelAutoConnect();
             stopScan();
             disconnectGatt(true);
             broadcastStatus("Disconnected");
             mainHandler.postDelayed(this::checkStopIfDisconnected, 500);
         } else if (ACTION_RECONNECT.equals(action)) {
             userDisconnect = false;
+            cancelAutoConnect();
             startScan();
+        } else if (ACTION_BACKGROUND_CONNECT.equals(action)) {
+            backgroundConnectMode = true;
+            userDisconnect = false;
+            startBackgroundConnect();
+        } else if (ACTION_DISABLE_BACKGROUND.equals(action)) {
+            backgroundConnectMode = false;
+            backgroundConnectPending = false;
+            cancelAutoConnect();
+            if (!isConnected) {
+                mainHandler.postDelayed(this::checkStopIfDisconnected, 200L);
+            }
+        } else if (ACTION_REFRESH_GPS.equals(action)) {
+            if (locationUpdatesActive) {
+                stopLocationUpdates();
+                startLocationUpdates();
+            }
         } else if (ACTION_STOP_SERVICE.equals(action)) {
             userDisconnect = true;
+            backgroundConnectMode = false;
+            cancelAutoConnect();
             stopScan();
             disconnectGatt(true);
             stopForeground(STOP_FOREGROUND_REMOVE);
@@ -351,16 +402,25 @@ public class XsrBleService extends Service {
             // cancels the first attempt and makes the second time out.
             String savedMac = prefs.getString(PREF_LAST_MAC, "");
             if (settings.isAutoConnect() && hasBluetoothPermission() && savedMac != null && !savedMac.isEmpty()) {
-                connectToMac(savedMac);
+                if (settings.isBackgroundConnect()) {
+                    backgroundConnectMode = true;
+                    startBackgroundConnect();
+                } else {
+                    connectToMac(savedMac);
+                }
             }
         }
         return START_STICKY;
     }
 
     private void startForegroundCompat() {
+        startForegroundCompat(true);
+    }
+
+    private void startForegroundCompat(boolean allowLocation) {
         Notification notification = buildServiceNotification(sStatusText);
         int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
-        if (hasLocationPermission()) {
+        if (allowLocation && hasLocationPermission()) {
             type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
         }
         try {
@@ -369,7 +429,13 @@ public class XsrBleService extends Service {
             // Some OEM builds reject a typed FGS start when a runtime
             // permission was just revoked; retry with the base contract.
             Log.w(TAG, "Typed foreground start failed, retrying: " + e.getMessage());
-            startForeground(NOTIFICATION_ID, notification);
+            try {
+                startForeground(NOTIFICATION_ID, notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
+            } catch (Exception e2) {
+                Log.e(TAG, "Connected-device foreground start failed: " + e2.getMessage());
+                throw e2;
+            }
         }
     }
 
@@ -406,6 +472,7 @@ public class XsrBleService extends Service {
         flushState();
         closeGatt();
         try { unregisterReceiver(batteryReceiver); } catch (Exception ignored) {}
+        try { unregisterReceiver(bluetoothStateReceiver); } catch (Exception ignored) {}
         super.onDestroy();
     }
 
@@ -640,8 +707,12 @@ public class XsrBleService extends Service {
         scanTimeoutRunnable = () -> {
             if (isScanning) {
                 stopScan();
-                broadcastStatus("Motorcycle not found. Turn the ignition on and retry.");
-                checkStopIfDisconnected();
+                if (autoScanActive && !userDisconnect && !isConnected) {
+                    scheduleAutoScanRetry();
+                } else {
+                    broadcastStatus("Motorcycle not found. Turn the ignition on and retry.");
+                    checkStopIfDisconnected();
+                }
             }
         };
         mainHandler.postDelayed(scanTimeoutRunnable, 12_000);
@@ -657,6 +728,103 @@ public class XsrBleService extends Service {
         }
         isScanning = false;
     }
+
+    // ---------------------------------------------------------------------
+    // App-open auto-connect with exponential backoff
+    // ---------------------------------------------------------------------
+
+    private void startAutoConnect() {
+        if (isConnected) return;
+        userDisconnect = false;
+        if (settings.isBackgroundConnect() && hasBluetoothPermission()) {
+            backgroundConnectMode = true;
+            startBackgroundConnect();
+            return;
+        }
+        autoScanActive = true;
+        autoScanAttempts = 0;
+        startNextAutoScan();
+    }
+
+    private void startNextAutoScan() {
+        cancelAutoScanTimer();
+        if (!autoScanActive || userDisconnect || isConnected) return;
+        if (autoScanAttempts >= MAX_AUTO_SCAN_ATTEMPTS) {
+            autoScanActive = false;
+            broadcastStatus("Motorcycle not found. Tap Connect to retry.");
+            mainHandler.postDelayed(this::checkStopIfDisconnected, 1500L);
+            return;
+        }
+        autoScanAttempts++;
+        startScan();
+    }
+
+    private void scheduleAutoScanRetry() {
+        if (!autoScanActive || userDisconnect || isConnected) return;
+        if (autoScanAttempts >= MAX_AUTO_SCAN_ATTEMPTS) {
+            autoScanActive = false;
+            broadcastStatus("Motorcycle not found after " + MAX_AUTO_SCAN_ATTEMPTS
+                    + " attempts. Tap Connect to retry.");
+            mainHandler.postDelayed(this::checkStopIfDisconnected, 1500L);
+            return;
+        }
+        long delay = Math.min(60_000L,
+                AUTO_SCAN_BASE_MS << Math.min(autoScanAttempts - 1, 3));
+        broadcastStatus(String.format(Locale.getDefault(),
+                "Bike not found. Retry %d/%d in %d s…",
+                autoScanAttempts + 1, MAX_AUTO_SCAN_ATTEMPTS, delay / 1000));
+        autoScanRunnable = this::startNextAutoScan;
+        mainHandler.postDelayed(autoScanRunnable, delay);
+    }
+
+    private void cancelAutoConnect() {
+        autoScanActive = false;
+        autoScanAttempts = 0;
+        cancelAutoScanTimer();
+    }
+
+    private void cancelAutoScanTimer() {
+        if (autoScanRunnable != null) {
+            mainHandler.removeCallbacks(autoScanRunnable);
+            autoScanRunnable = null;
+        }
+    }
+
+    private void startBackgroundConnect() {
+        if (!settings.isBackgroundConnect()) return;
+        if (!hasBluetoothPermission()) {
+            broadcastStatus("Bluetooth permission required");
+            return;
+        }
+        if (isConnected || isScanning || backgroundConnectPending) return;
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
+            broadcastStatus("Bluetooth is off. Waiting…");
+            return;
+        }
+        String mac = prefs.getString(PREF_LAST_MAC, "");
+        if (mac == null || mac.isEmpty()) {
+            broadcastStatus("Open the app once to pair your motorcycle");
+            return;
+        }
+        try {
+            BluetoothDevice device = bluetoothAdapter.getRemoteDevice(mac);
+            connectToDevice(device, true);
+        } catch (Exception e) {
+            broadcastStatus("Saved bike not available. Tap Connect.");
+        }
+    }
+
+    private final BroadcastReceiver bluetoothStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction())) return;
+            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
+            if (state == BluetoothAdapter.STATE_ON && backgroundConnectMode
+                    && !isConnected && !userDisconnect) {
+                mainHandler.postDelayed(XsrBleService.this::startBackgroundConnect, 1000L);
+            }
+        }
+    };
 
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
@@ -733,28 +901,34 @@ public class XsrBleService extends Service {
     }
 
     private void connectToDevice(BluetoothDevice device) {
+        connectToDevice(device, false);
+    }
+
+    private void connectToDevice(BluetoothDevice device, boolean autoConnect) {
         if (device == null) return;
         String address = device.getAddress();
 
         // Never start a second connection while one is still opening. The
         // previous code closed the first GATT and immediately reconnected,
         // which the controller often answers with a connection timeout.
-        if (connectInFlight && address != null
+        if (!autoConnect && connectInFlight && address != null
                 && address.equalsIgnoreCase(connectInFlightAddress)) {
             AppLogManager.getInstance().log(TAG,
                     "Connect already in progress; ignoring duplicate request");
             return;
         }
+        if (autoConnect && backgroundConnectPending) return;
 
         closeGatt();
-        connectInFlight = true;
+        connectInFlight = !autoConnect;
         connectInFlightAddress = address;
+        backgroundConnectPending = autoConnect;
 
         String name;
         try { name = device.getName(); } catch (Exception e) { name = null; }
         if (name == null) name = currentDeviceName;
         currentDeviceName = name;
-        broadcastStatus("Connecting to " + name + "…");
+        broadcastStatus(autoConnect ? "Waiting for your motorcycle…" : "Connecting to " + name + "…");
 
         prefs.edit()
                 .putString(PREF_LAST_MAC, device.getAddress())
@@ -762,13 +936,15 @@ public class XsrBleService extends Service {
                 .apply();
 
         try {
-            bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+            bluetoothGatt = device.connectGatt(this, autoConnect, gattCallback,
+                    BluetoothDevice.TRANSPORT_LE);
         } catch (Exception e) {
             bluetoothGatt = null;
         }
         if (bluetoothGatt == null) {
             connectInFlight = false;
             connectInFlightAddress = null;
+            backgroundConnectPending = false;
             broadcastStatus("Could not start the Bluetooth connection");
         }
     }
@@ -789,6 +965,7 @@ public class XsrBleService extends Service {
             }
             connectInFlight = false;
             connectInFlightAddress = null;
+            backgroundConnectPending = false;
 
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
@@ -798,6 +975,7 @@ public class XsrBleService extends Service {
                 authCandidates.clear();
                 authCandidateIndex = 0;
                 connectRetries = 0;
+                cancelAutoConnect();
                 packetCount = 0;
                 sPacketCount = 0;
                 broadcastStatus("Connected. Reading services…");
@@ -826,6 +1004,12 @@ public class XsrBleService extends Service {
                 finishRide();
                 saveParkedLocation();
                 closeGatt();
+
+                if (backgroundConnectMode && !userDisconnect && settings.isBackgroundConnect()) {
+                    broadcastStatus("Bike off. Waiting for it to come back…");
+                    mainHandler.postDelayed(XsrBleService.this::startBackgroundConnect, 3000L);
+                    return;
+                }
 
                 // 147 = GATT_CONNECTION_TIMEOUT: the CCU did not answer the
                 // direct connect. Rescan instead of blindly retrying the saved
@@ -1365,7 +1549,8 @@ public class XsrBleService extends Service {
         // No GPS or database writes while stationary — moving again records
         // immediately because lastPointRecordMs is only advanced on a write.
         if (latestTelemetry.speedKmh <= 1) return;
-        if (now - lastPointRecordMs < 3000L) return;
+        long minInterval = settings.isGpsBatterySaver() ? GPS_SAVER_INTERVAL_MS : GPS_DETAILED_INTERVAL_MS;
+        if (now - lastPointRecordMs < minInterval) return;
         lastPointRecordMs = now;
 
         boolean hasGps = currentLocation != null
@@ -1532,13 +1717,17 @@ public class XsrBleService extends Service {
         try {
             boolean gps = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
             boolean network = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            boolean saver = settings.isGpsBatterySaver();
             if (gps) {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                        3000L, 8f, locationListener, Looper.getMainLooper());
+                        saver ? GPS_SAVER_INTERVAL_MS : GPS_DETAILED_INTERVAL_MS,
+                        saver ? GPS_SAVER_DISTANCE_M : GPS_DETAILED_DISTANCE_M,
+                        locationListener, Looper.getMainLooper());
                 locationUpdatesActive = true;
             } else if (network) {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
-                        5000L, 15f, locationListener, Looper.getMainLooper());
+                        saver ? 15_000L : 5_000L,
+                        saver ? 50f : 15f, locationListener, Looper.getMainLooper());
                 locationUpdatesActive = true;
             }
             Location last = locationManager.getLastKnownLocation(
@@ -1724,12 +1913,22 @@ public class XsrBleService extends Service {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    private boolean hasBackgroundLocationPermission() {
+        return checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
     private boolean hasPhonePermission() {
         return checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
     public void checkStopIfDisconnected() {
+        if (backgroundConnectMode && settings.isBackgroundConnect() && !userDisconnect) {
+            // Keep the low-power autoConnect request alive so the next ignition
+            // cycle starts a ride without opening the app.
+            return;
+        }
         if (!isConnected && !sessionActive && !isScanning && boundClients.get() <= 0) {
             AppLogManager.getInstance().log(TAG, "Battery saver: stopping idle service");
             stopForeground(STOP_FOREGROUND_REMOVE);

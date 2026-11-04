@@ -15,6 +15,8 @@ public class SettingsManager {
     public static final String KEY_TANK_CAPACITY = "tank_capacity_l";    // litres
     public static final String KEY_RESERVE = "reserve_l";                // litres
     public static final String KEY_AUTO_CONNECT = "auto_connect";
+    public static final String KEY_BACKGROUND_CONNECT = "background_connect";
+    public static final String KEY_GPS_SAVER = "gps_battery_saver";
     public static final String KEY_ALERT_OVERSPEED = "alert_overspeed";
     public static final String KEY_OVERSPEED_KMH = "overspeed_kmh";
     public static final String KEY_ALERT_COOLANT = "alert_coolant";
@@ -86,6 +88,24 @@ public class SettingsManager {
 
     public void setAutoConnect(boolean enabled) {
         prefs.edit().putBoolean(KEY_AUTO_CONNECT, enabled).apply();
+    }
+
+    /** Keep a low-power BLE connection request open even when the app is closed. */
+    public boolean isBackgroundConnect() {
+        return prefs.getBoolean(KEY_BACKGROUND_CONNECT, false);
+    }
+
+    public void setBackgroundConnect(boolean enabled) {
+        prefs.edit().putBoolean(KEY_BACKGROUND_CONNECT, enabled).apply();
+    }
+
+    /** Coarser GPS sampling (10 s / 25 m) for long rides. */
+    public boolean isGpsBatterySaver() {
+        return prefs.getBoolean(KEY_GPS_SAVER, false);
+    }
+
+    public void setGpsBatterySaver(boolean enabled) {
+        prefs.edit().putBoolean(KEY_GPS_SAVER, enabled).apply();
     }
 
     public void setAlertOverspeed(boolean enabled) {

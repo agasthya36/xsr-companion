@@ -232,6 +232,7 @@ public class MainActivity extends AppCompatActivity {
         if (!com.xsr.companion.settings.SettingsManager.get(this).isAutoConnect()) return;
         Intent intent = new Intent(this, XsrBleService.class);
         intent.setAction(XsrBleService.ACTION_START_SCAN);
+        intent.putExtra(XsrBleService.EXTRA_AUTO_CONNECT, true);
         try {
             ContextCompat.startForegroundService(this, intent);
         } catch (Exception ignored) {
@@ -333,6 +334,7 @@ public class MainActivity extends AppCompatActivity {
             if (hasCorePermissions()) {
                 Intent intent = new Intent(this, XsrBleService.class);
                 intent.setAction(XsrBleService.ACTION_START_SCAN);
+                intent.putExtra(XsrBleService.EXTRA_AUTO_CONNECT, true);
                 try {
                     ContextCompat.startForegroundService(this, intent);
                 } catch (Exception ignored) {

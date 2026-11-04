@@ -1,8 +1,13 @@
 package com.xsr.companion.ui;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -13,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
@@ -37,8 +43,9 @@ public class SettingsFragment extends BaseFragment {
     private FuelManager fuelManager;
     private SharedPreferences servicePrefs;
 
-    private MaterialSwitch swAutoConnect, swOverspeed, swCoolant, swLowFuel, swService, swCold;
-    private TextView tvPasskey;
+    private MaterialSwitch swAutoConnect, swBackgroundConnect, swOverspeed, swCoolant, swLowFuel, swService, swCold;
+    private TextView tvPasskey, tvBackgroundLocation;
+    private MaterialButtonToggleGroup gpsModeGroup;
     private MaterialButton btnToggleConnection, btnTankCapacity, btnReserve,
             btnOverspeedLimit, btnCoolantLimit;
 
@@ -61,6 +68,7 @@ public class SettingsFragment extends BaseFragment {
                 XsrBleService.PREFS_NAME, Context.MODE_PRIVATE);
 
         swAutoConnect = view.findViewById(R.id.swAutoConnect);
+        swBackgroundConnect = view.findViewById(R.id.swBackgroundConnect);
         swOverspeed = view.findViewById(R.id.swOverspeed);
         swCoolant = view.findViewById(R.id.swCoolant);
         swLowFuel = view.findViewById(R.id.swLowFuel);
@@ -68,6 +76,8 @@ public class SettingsFragment extends BaseFragment {
         swCold = view.findViewById(R.id.swCold);
 
         tvPasskey = view.findViewById(R.id.tvPasskey);
+        tvBackgroundLocation = view.findViewById(R.id.tvBackgroundLocation);
+        gpsModeGroup = view.findViewById(R.id.gpsModeGroup);
         btnToggleConnection = view.findViewById(R.id.btnToggleConnection);
         btnTankCapacity = view.findViewById(R.id.btnTankCapacity);
         btnReserve = view.findViewById(R.id.btnReserve);
@@ -76,6 +86,7 @@ public class SettingsFragment extends BaseFragment {
 
         bindToggles();
         bindConnection(view);
+        bindRiding(view);
         bindUnits(view);
         bindFuel();
         bindAlerts();
@@ -98,6 +109,7 @@ public class SettingsFragment extends BaseFragment {
 
     private void bindToggles() {
         swAutoConnect.setChecked(settings.isAutoConnect());
+        swBackgroundConnect.setChecked(settings.isBackgroundConnect());
         swOverspeed.setChecked(settings.alertOverspeed());
         swCoolant.setChecked(settings.alertCoolant());
         swLowFuel.setChecked(settings.alertLowFuel());
@@ -105,6 +117,28 @@ public class SettingsFragment extends BaseFragment {
         swCold.setChecked(settings.alertColdEngine());
 
         swAutoConnect.setOnCheckedChangeListener((v, checked) -> settings.setAutoConnect(checked));
+        swBackgroundConnect.setOnCheckedChangeListener((v, checked) -> {
+            settings.setBackgroundConnect(checked);
+            Intent intent = new Intent(requireContext(), XsrBleService.class);
+            if (checked) {
+                intent.setAction(XsrBleService.ACTION_BACKGROUND_CONNECT);
+                try {
+                    ContextCompat.startForegroundService(requireContext(), intent);
+                } catch (Exception e) {
+                    Toast.makeText(requireContext(),
+                            "Could not start background connection", Toast.LENGTH_SHORT).show();
+                }
+                Toast.makeText(requireContext(),
+                        "Background connection on — Android will show an ongoing notification",
+                        Toast.LENGTH_LONG).show();
+            } else {
+                intent.setAction(XsrBleService.ACTION_DISABLE_BACKGROUND);
+                try {
+                    requireContext().startService(intent);
+                } catch (Exception ignored) {
+                }
+            }
+        });
         swOverspeed.setOnCheckedChangeListener((v, checked) -> settings.setAlertOverspeed(checked));
         swCoolant.setOnCheckedChangeListener((v, checked) -> settings.setAlertCoolant(checked));
         swLowFuel.setOnCheckedChangeListener((v, checked) -> settings.setAlertLowFuel(checked));
@@ -121,6 +155,29 @@ public class SettingsFragment extends BaseFragment {
         });
 
         view.findViewById(R.id.btnEditPasskey).setOnClickListener(v -> editPasskey());
+    }
+
+    private void bindRiding(View view) {
+        gpsModeGroup.check(settings.isGpsBatterySaver() ? R.id.btnGpsSaver : R.id.btnGpsDetailed);
+        gpsModeGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
+            boolean saver = checkedId == R.id.btnGpsSaver;
+            if (saver == settings.isGpsBatterySaver()) return;
+            settings.setGpsBatterySaver(saver);
+            try {
+                requireContext().startService(new Intent(requireContext(), XsrBleService.class)
+                        .setAction(XsrBleService.ACTION_REFRESH_GPS));
+            } catch (Exception ignored) {
+            }
+        });
+
+        view.findViewById(R.id.btnBackgroundLocation).setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", requireContext().getPackageName(), null)));
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     private void bindUnits(View view) {
@@ -255,6 +312,12 @@ public class SettingsFragment extends BaseFragment {
                 ? String.format(Locale.getDefault(), "%d °F",
                 Math.round(settings.coolantLimitC() * 9.0 / 5.0 + 32.0))
                 : String.format(Locale.getDefault(), "%d °C", settings.coolantLimitC()));
+
+        boolean backgroundLocation = ContextCompat.checkSelfPermission(requireContext(),
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        tvBackgroundLocation.setText(backgroundLocation
+                ? "Allowed — background rides record GPS"
+                : "Allow all the time to record GPS on background rides");
 
         updateConnectionState();
     }
