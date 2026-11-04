@@ -45,6 +45,10 @@ public class RideFileProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
+        String path = uri.getPath();
+        if (path != null && path.endsWith(".txt")) {
+            return "text/plain";
+        }
         return "application/gpx+xml";
     }
 
@@ -52,7 +56,7 @@ public class RideFileProvider extends ContentProvider {
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         File file = getFileForUri(uri);
         if (file == null || !file.exists()) {
-            throw new FileNotFoundException("Ride file not found: " + uri);
+            throw new FileNotFoundException("File not found: " + uri);
         }
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
@@ -65,9 +69,15 @@ public class RideFileProvider extends ContentProvider {
         // Strip leading slash
         if (path.startsWith("/")) path = path.substring(1);
 
-        File dir = new File(getContext().getExternalFilesDir(null), "rides");
-        File file = new File(dir, path);
-        return file.exists() ? file : new File(path);
+        File baseDir = getContext().getExternalFilesDir(null);
+        File rideFile = new File(new File(baseDir, "rides"), path);
+        if (rideFile.exists()) return rideFile;
+
+        File logFile = new File(new File(baseDir, "logs"), path);
+        if (logFile.exists()) return logFile;
+
+        File directFile = new File(path);
+        return directFile.exists() ? directFile : logFile;
     }
 
     public static Uri getUriForFile(File file) {

@@ -46,6 +46,7 @@ import com.xsr.companion.maintenance.MaintenanceManager;
 import com.xsr.companion.protocol.BikeTelemetry;
 import com.xsr.companion.protocol.YamahaProtocol;
 import com.xsr.companion.ui.MainActivity;
+import com.xsr.companion.util.AppLogManager;
 
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -116,6 +117,16 @@ public class XsrBleService extends Service {
     public static volatile double sEstimatedRangeKm = 485.0;
     public static volatile double sLatestBikeOdo = 0.0;
     public static final BikeTelemetry sLatestTelemetry = new BikeTelemetry();
+
+    // Binder and client tracking for background battery optimization
+    public class LocalBinder extends android.os.Binder {
+        public XsrBleService getService() {
+            return XsrBleService.this;
+        }
+    }
+
+    private final IBinder binder = new LocalBinder();
+    private int boundClients = 0;
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothLeScanner bleScanner;
@@ -306,7 +317,7 @@ public class XsrBleService extends Service {
         sPacketCount = packetCount;
         sBatteryLevel = currentBatteryLevel;
 
-        Log.i(TAG, "Status: " + statusText);
+        AppLogManager.getInstance().log(TAG, "Status: " + statusText);
         Intent intent = new Intent(BROADCAST_STATUS);
         intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_STATUS_TEXT, statusText);
@@ -478,6 +489,7 @@ public class XsrBleService extends Service {
         String name = device.getName() != null ? device.getName() : currentDeviceName;
         currentDeviceName = name;
         broadcastStatus("Initiating LE connection to " + name + "...");
+        AppLogManager.getInstance().log(TAG, "Initiating LE GATT connection to %s (%s)", name, device.getAddress());
 
         prefs.edit()
                 .putString(PREF_LAST_MAC, device.getAddress())
@@ -560,6 +572,10 @@ public class XsrBleService extends Service {
                 saveParkedLocation();
 
                 broadcastStatus("Disconnected (Motorcycle turned OFF or status " + status + ")");
+                AppLogManager.getInstance().log(TAG, "Motorcycle disconnected (GATT status=%d)", status);
+
+                // Battery Saver: If disconnected and no UI bound, stop background service
+                mainHandler.postDelayed(() -> checkStopIfDisconnected(), 1500);
             }
         }
 
@@ -591,8 +607,10 @@ public class XsrBleService extends Service {
                     }
                 }
                 broadcastStatus("CCU NUS Service not found on device");
+                AppLogManager.getInstance().log(TAG, "CCU NUS service missing on target device");
             } else {
                 broadcastStatus("Service discovery failed: status " + status);
+                AppLogManager.getInstance().log(TAG, "Service discovery failed with status: %d", status);
             }
         }
 
@@ -600,20 +618,39 @@ public class XsrBleService extends Service {
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 broadcastStatus("Notifications enabled. Requesting MTU 512...");
+                AppLogManager.getInstance().log(TAG, "NUS TX Notification descriptor enabled successfully. Requesting MTU 512...");
                 // Request MTU 512 after descriptor write has successfully completed
                 gatt.requestMtu(512);
             } else {
                 broadcastStatus("Descriptor write error: " + status);
+                AppLogManager.getInstance().log(TAG, "Descriptor write failed with status: %d", status);
             }
         }
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-            isHandshakeComplete = false;
-            String devName = gatt.getDevice().getName();
-            String ccuId = YamahaProtocol.cleanCcuId(devName != null ? devName : currentDeviceName);
+            BluetoothDevice dev = gatt.getDevice();
+            int bondState = (dev != null) ? dev.getBondState() : BluetoothDevice.BOND_NONE;
+            String devName = (dev != null && dev.getName() != null) ? dev.getName() : currentDeviceName;
+            String ccuId = YamahaProtocol.cleanCcuId(devName);
 
-            Log.i(TAG, "onMtuChanged: mtu=" + mtu + ", status=" + status + ", ccuId=" + ccuId);
+            AppLogManager.getInstance().log(TAG, "onMtuChanged: mtu=%d, status=%d, bondState=%d, ccuId=%s", mtu, status, bondState, ccuId);
+
+            // If the motorcycle is already bonded in Android OS, the CCU already trusts this phone!
+            // Do NOT cycle through rejected 0x7F00 candidate PINs which triggers CCU lockout (status 147)
+            if (bondState == BluetoothDevice.BOND_BONDED) {
+                AppLogManager.getInstance().log(TAG, "CCU is BONDED in Android OS. Telemetry streams directly without 0x7F00 PIN handshake.");
+                isHandshakeComplete = true;
+                authCandidates.clear();
+                authCandidateIndex = 0;
+                broadcastStatus("Connected & Syncing with Meter (Bonded)");
+                startRideTracking();
+                startPeriodicSync();
+                return;
+            }
+
+            // Unbonded device: prepare candidates
+            isHandshakeComplete = false;
             broadcastStatus("MTU " + mtu + " negotiated. Authenticating with CCU...");
 
             prepareAuthCandidates(ccuId);
@@ -622,8 +659,10 @@ public class XsrBleService extends Service {
             // Watchdog fallback: if CCU sends telemetry directly or misses 0x7F01, start sync after 4.5s
             mainHandler.postDelayed(() -> {
                 if (isConnected && !isHandshakeComplete) {
-                    Log.w(TAG, "Auth response watchdog timeout (4.5s). Starting periodic sync fallback.");
+                    AppLogManager.getInstance().log(TAG, "Auth response watchdog timeout (4.5s). Starting periodic sync fallback.");
                     isHandshakeComplete = true;
+                    authCandidates.clear();
+                    authCandidateIndex = 0;
                     broadcastStatus("Connected & Syncing with Meter");
                     startRideTracking();
                     startPeriodicSync();
@@ -695,9 +734,10 @@ public class XsrBleService extends Service {
     }
 
     private void trySendNextAuth() {
-        if (bluetoothGatt == null || !isConnected) return;
+        if (bluetoothGatt == null || !isConnected || isHandshakeComplete) return;
         if (authCandidateIndex >= authCandidates.size()) {
             broadcastStatus("All PIN candidates rejected. Tap CCU Name to enter PIN.");
+            AppLogManager.getInstance().log(TAG, "All auth candidates exhausted without positive ACK.");
             return;
         }
 
@@ -707,7 +747,8 @@ public class XsrBleService extends Service {
         String phoneUuid = prefs.getString(PREF_PHONE_UUID, "");
 
         broadcastStatus("Authenticating CCU (PIN " + candidate.passkey + ", bond=" + (candidate.updateBondingFlag ? "1" : "0") + ")...");
-        Log.i(TAG, "Trying Auth Candidate [" + authCandidateIndex + "/" + authCandidates.size() + "]: PIN=" + candidate.passkey + ", bondFlag=" + candidate.updateBondingFlag);
+        AppLogManager.getInstance().log(TAG, "Trying Auth Candidate [%d/%d]: PIN=%s, bondFlag=%b",
+                authCandidateIndex, authCandidates.size(), candidate.passkey, candidate.updateBondingFlag);
 
         byte[] authPacket = YamahaProtocol.buildAuthPacket(ccuId, candidate.passkey, phoneUuid, candidate.updateBondingFlag, syncCounter++);
         enqueueWrite(authPacket);
@@ -724,21 +765,24 @@ public class XsrBleService extends Service {
                 AuthCandidate successfulCandidate = authCandidateIndex > 0 ? authCandidates.get(authCandidateIndex - 1) : null;
                 if (successfulCandidate != null) {
                     prefs.edit().putString(PREF_PASSKEY, successfulCandidate.passkey).apply();
-                    Log.i(TAG, "CCU Authentication ACCEPTED! Saved working passkey: " + successfulCandidate.passkey);
+                    AppLogManager.getInstance().log(TAG, "CCU Authentication ACCEPTED! Saved working passkey: %s", successfulCandidate.passkey);
                 }
                 broadcastStatus("CCU Authenticated! Live streaming active.");
                 startRideTracking();
                 startPeriodicSync();
             } else {
-                Log.w(TAG, "CCU Auth candidate rejected (flag=0). Retrying next candidate...");
+                AppLogManager.getInstance().log(TAG, "CCU Auth candidate rejected (ack=0). Retrying next candidate...");
                 mainHandler.postDelayed(this::trySendNextAuth, 120);
             }
             return;
         }
 
-        // 2. If telemetry packet arrives, mark handshake complete
+        // 2. If telemetry packet arrives, mark handshake complete IMMEDIATELY and CANCEL any remaining auth candidates!
         if (!isHandshakeComplete && (data[0] == YamahaProtocol.START_BYTE_55 || data[0] == YamahaProtocol.START_BYTE_56)) {
+            AppLogManager.getInstance().log(TAG, "Telemetry streaming verified (0x%02X). Marking handshake complete and clearing pending auth.", data[0]);
             isHandshakeComplete = true;
+            authCandidates.clear();
+            authCandidateIndex = 0;
             broadcastStatus("Connected & Syncing with Meter");
             startRideTracking();
             startPeriodicSync();
@@ -872,6 +916,7 @@ public class XsrBleService extends Service {
         rideStartOdo = latestTelemetry.odometerKm > 0 ? latestTelemetry.odometerKm : sLatestBikeOdo;
         latestTelemetry.tripFuelConsumedL = 0.0;
         currentRideId = rideDb.startNewRide(System.currentTimeMillis());
+        AppLogManager.getInstance().log(TAG, "Started ride session #%d (start odo=%.1f km)", currentRideId, rideStartOdo);
         try {
             if (locationManager != null) {
                 if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -912,8 +957,10 @@ public class XsrBleService extends Service {
         }
 
         if (currentRideId > 0) {
-            boolean saved = rideDb.finalizeRide(currentRideId, System.currentTimeMillis());
+            long rideId = currentRideId;
+            boolean saved = rideDb.finalizeRide(rideId, System.currentTimeMillis());
             currentRideId = -1;
+            AppLogManager.getInstance().log(TAG, "Finalized ride session #%d (saved=%b)", rideId, saved);
             if (saved) {
                 Intent finishIntent = new Intent(BROADCAST_RIDE_FINISHED);
                 finishIntent.setPackage(getPackageName());
@@ -1018,13 +1065,40 @@ public class XsrBleService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        AppLogManager.getInstance().log(TAG, "XsrBleService onDestroy");
         stopScan();
         disconnectGatt();
-        unregisterReceiver(batteryReceiver);
+        try {
+            unregisterReceiver(batteryReceiver);
+        } catch (Exception ignored) {}
     }
 
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        boundClients++;
+        AppLogManager.getInstance().log(TAG, "Client bound (active clients: %d)", boundClients);
+        return binder;
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        boundClients = Math.max(0, boundClients - 1);
+        AppLogManager.getInstance().log(TAG, "Client unbound (remaining clients: %d)", boundClients);
+        checkStopIfDisconnected();
+        return super.onUnbind(intent);
+    }
+
+    /**
+     * Battery Saver:
+     * If motorcycle is NOT connected and no Activity/UI is bound, shut down service completely.
+     */
+    public void checkStopIfDisconnected() {
+        if (!isConnected && boundClients <= 0) {
+            AppLogManager.getInstance().log(TAG, "Battery Saver: Bike disconnected and no active UI. Shutting down service.");
+            stopScan();
+            disconnectGatt();
+            stopForeground(true);
+            stopSelf();
+        }
     }
 }

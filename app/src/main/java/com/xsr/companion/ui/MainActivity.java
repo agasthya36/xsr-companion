@@ -2,17 +2,26 @@ package com.xsr.companion.ui;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,6 +31,7 @@ import com.xsr.companion.diagnostics.DtcManager;
 import com.xsr.companion.maintenance.FuelManager;
 import com.xsr.companion.maintenance.MaintenanceManager;
 import com.xsr.companion.service.XsrBleService;
+import com.xsr.companion.util.AppLogManager;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -34,11 +44,35 @@ public class MainActivity extends Activity {
     private static final int PERMISSION_REQ_CODE = 155;
 
     private TextView tvConnectionStatus;
+    private TextView tvStatusDot;
     private TextView tvDeviceName;
     private TextView tvPacketCounter;
+    private Button btnViewLogs;
     private Button btnKillOfficialApp;
     private Button btnScanConnect;
     private Button btnDisconnect;
+
+    private XsrBleService bleService = null;
+    private boolean isBound = false;
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            if (service instanceof XsrBleService.LocalBinder) {
+                bleService = ((XsrBleService.LocalBinder) service).getService();
+                isBound = true;
+                AppLogManager.getInstance().log("MainActivity", "Connected to XsrBleService via binder");
+                refreshUiFromServiceState();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            bleService = null;
+            isBound = false;
+            AppLogManager.getInstance().log("MainActivity", "Disconnected from XsrBleService binder");
+        }
+    };
 
     private TextView tvLiveSpeed;
     private TextView tvLiveRpm;
@@ -161,8 +195,10 @@ public class MainActivity extends Activity {
 
     private void initViews() {
         tvConnectionStatus = findViewById(com.xsr.companion.R.id.tvConnectionStatus);
+        tvStatusDot = findViewById(com.xsr.companion.R.id.tvStatusDot);
         tvDeviceName = findViewById(com.xsr.companion.R.id.tvDeviceName);
         tvPacketCounter = findViewById(com.xsr.companion.R.id.tvPacketCounter);
+        btnViewLogs = findViewById(com.xsr.companion.R.id.btnViewLogs);
         btnKillOfficialApp = findViewById(com.xsr.companion.R.id.btnKillOfficialApp);
         btnScanConnect = findViewById(com.xsr.companion.R.id.btnScanConnect);
         btnDisconnect = findViewById(com.xsr.companion.R.id.btnDisconnect);
@@ -218,6 +254,10 @@ public class MainActivity extends Activity {
     }
 
     private void setupListeners() {
+        if (btnViewLogs != null) {
+            btnViewLogs.setOnClickListener(v -> showLiveLogsDialog());
+        }
+
         tvDeviceName.setOnClickListener(v -> {
             String currentPasskey = prefs.getString(XsrBleService.PREF_PASSKEY, "");
             android.widget.EditText input = new android.widget.EditText(this);
@@ -312,9 +352,22 @@ public class MainActivity extends Activity {
     }
 
     private void updateConnectionUi(String status, boolean isConnected, int packetCount, String deviceName) {
-        tvConnectionStatus.setText(status != null ? status : (isConnected ? "Connected" : "Disconnected"));
-        int color = isConnected ? 0xFF00E676 : 0xFFFF5252;
+        String displayStatus = status != null ? status : (isConnected ? "Connected" : "Disconnected");
+        tvConnectionStatus.setText(displayStatus);
+
+        int color;
+        if (isConnected) {
+            color = 0xFF00E676; // Bright Green
+        } else if (displayStatus.contains("Scanning") || displayStatus.contains("Initiating") || displayStatus.contains("Discovering") || displayStatus.contains("Authenticating") || displayStatus.contains("Negotiating")) {
+            color = 0xFFFFB300; // Amber
+        } else {
+            color = 0xFFFF4D4D; // Red
+        }
+
         tvConnectionStatus.setTextColor(color);
+        if (tvStatusDot != null) {
+            tvStatusDot.setTextColor(color);
+        }
 
         String name = deviceName != null && !deviceName.isEmpty() ? deviceName : prefs.getString(XsrBleService.PREF_LAST_NAME, "No CCU Paired");
         tvDeviceName.setText(name);
@@ -575,6 +628,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, XsrBleService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         IntentFilter filter = new IntentFilter();
@@ -597,5 +657,107 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         unregisterReceiver(statusReceiver);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (isBound) {
+            unbindService(serviceConnection);
+            isBound = false;
+            bleService = null;
+        }
+    }
+
+    /**
+     * Shows a real-time scrolling terminal dialog with full BLE and protocol diagnostic logs.
+     * Allows live monitoring, exporting to a timestamped file via RideFileProvider, and copying.
+     */
+    private void showLiveLogsDialog() {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(com.xsr.companion.R.layout.dialog_live_logs);
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        TextView tvLogContent = dialog.findViewById(com.xsr.companion.R.id.tvLogContent);
+        TextView tvLogCounter = dialog.findViewById(com.xsr.companion.R.id.tvLogCounter);
+        ScrollView scrollLogContainer = dialog.findViewById(com.xsr.companion.R.id.scrollLogContainer);
+        Button btnCloseLogs = dialog.findViewById(com.xsr.companion.R.id.btnCloseLogs);
+        Button btnExportLogs = dialog.findViewById(com.xsr.companion.R.id.btnExportLogs);
+        Button btnCopyLogs = dialog.findViewById(com.xsr.companion.R.id.btnCopyLogs);
+        Button btnClearLogs = dialog.findViewById(com.xsr.companion.R.id.btnClearLogs);
+
+        AppLogManager logManager = AppLogManager.getInstance();
+
+        // Populate initial logs
+        List<String> currentLogs = logManager.getAllLogs();
+        tvLogCounter.setText(currentLogs.size() + " log entries recorded");
+        if (currentLogs.isEmpty()) {
+            tvLogContent.setText("No log events recorded yet.\nConnect to motorcycle or start BLE scan to observe events.");
+        } else {
+            tvLogContent.setText(logManager.getLogsAsString());
+        }
+
+        // Auto-scroll to bottom
+        scrollLogContainer.post(() -> scrollLogContainer.fullScroll(View.FOCUS_DOWN));
+
+        // Real-time listener for incoming log entries while dialog is open
+        AppLogManager.OnLogListener listener = formattedLine -> runOnUiThread(() -> {
+            if (tvLogContent != null) {
+                if (logManager.getAllLogs().size() <= 1) {
+                    tvLogContent.setText(formattedLine + "\n");
+                } else {
+                    tvLogContent.append(formattedLine + "\n");
+                }
+                tvLogCounter.setText(logManager.getAllLogs().size() + " log entries recorded");
+                scrollLogContainer.post(() -> scrollLogContainer.fullScroll(View.FOCUS_DOWN));
+            }
+        });
+        logManager.addListener(listener);
+
+        dialog.setOnDismissListener(d -> logManager.removeListener(listener));
+
+        btnCloseLogs.setOnClickListener(v -> dialog.dismiss());
+
+        btnExportLogs.setOnClickListener(v -> {
+            try {
+                File logFile = logManager.exportToFile(this);
+                Uri uri = RideFileProvider.getUriForFile(logFile);
+
+                Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                shareIntent.setType("text/plain");
+                shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Yamaha XSR Companion CCU Logs - " + logFile.getName());
+                shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                startActivity(Intent.createChooser(shareIntent, "Export / Share CCU Logs"));
+                Toast.makeText(this, "Logs saved to " + logFile.getName(), Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+
+        btnCopyLogs.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText("XSR CCU Logs", logManager.getLogsAsString());
+            if (cm != null) {
+                cm.setPrimaryClip(clip);
+                Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        btnClearLogs.setOnClickListener(v -> {
+            logManager.clear();
+            tvLogContent.setText("Log buffer cleared.");
+            tvLogCounter.setText("0 log entries");
+            Toast.makeText(this, "Log buffer cleared", Toast.LENGTH_SHORT).show();
+        });
+
+        dialog.show();
     }
 }

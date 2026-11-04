@@ -10,29 +10,56 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Header -->
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Top Cockpit Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Yamaha XSR 155"
-            android:textColor="@color/text_primary"
-            android:textSize="26sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="100% Offline • Zero Telemetry Companion"
-            android:textColor="@color/accent_cyan"
-            android:textSize="13sp" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Yamaha XSR 155"
+                    android:textColor="@color/text_primary"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="100% OFFLINE • ZERO TELEMETRY"
+                    android:textColor="@color/accent_cyan"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnViewLogs"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:background="@drawable/btn_pill_cyan"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="📜 Live Logs"
+                android:textColor="@color/accent_cyan"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <!-- Status Card -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -41,34 +68,64 @@
                 android:layout_height="wrap_content"
                 android:text="CONNECTION STATUS"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tvConnectionStatus"
+            <!-- Status Pill Badge -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="Disconnected"
-                android:textColor="@color/accent_red"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_status_pill"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingTop="5dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="5dp">
+
+                <TextView
+                    android:id="@+id/tvStatusDot"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:text="●"
+                    android:textColor="@color/accent_red"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvConnectionStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Disconnected"
+                    android:textColor="@color/accent_red"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tvDeviceName"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="10dp"
                 android:text="No CCU Paired"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Tap bike name above to customize PIN or VIN"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/tvPacketCounter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="Packets: 0 • MTU: Pending"
+                android:layout_marginTop="6dp"
+                android:text="Packets: 0 • Live Telemetry Active"
                 android:textColor="@color/accent_cyan"
                 android:textSize="12sp"
                 android:visibility="gone" />
@@ -76,9 +133,9 @@
             <Button
                 android:id="@+id/btnKillOfficialApp"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:backgroundTint="#33FF9800"
+                android:layout_height="40dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/btn_secondary_dark"
                 android:text="⚠ Official App Installed? Tap to Force-Stop"
                 android:textColor="@color/accent_amber"
                 android:textSize="12sp"
@@ -93,11 +150,13 @@
                 <Button
                     android:id="@+id/btnScanConnect"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="46dp"
                     android:layout_weight="1"
-                    android:backgroundTint="@color/accent_yamaha_blue"
+                    android:background="@drawable/btn_primary_blue"
                     android:text="Scan &amp; Connect"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
                 <Space
                     android:layout_width="12dp"
@@ -106,11 +165,12 @@
                 <Button
                     android:id="@+id/btnDisconnect"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="46dp"
                     android:layout_weight="1"
-                    android:backgroundTint="@color/border_color"
+                    android:background="@drawable/btn_secondary_dark"
                     android:text="Disconnect"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -119,7 +179,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -128,7 +188,7 @@
                 android:layout_height="wrap_content"
                 android:text="LIVE MOTORCYCLE TELEMETRY"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Speed & RPM Row -->
@@ -138,47 +198,63 @@
                 android:layout_marginTop="12dp"
                 android:orientation="horizontal">
 
-                <!-- Speed -->
+                <!-- Speed Tile -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="SPEED"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveSpeed"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
                         android:text="0 km/h"
                         android:textColor="@color/text_primary"
-                        android:textSize="24sp"
+                        android:textSize="32sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <!-- RPM -->
+                <Space
+                    android:layout_width="10dp"
+                    android:layout_height="wrap_content" />
+
+                <!-- RPM Tile -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="ENGINE RPM"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveRpm"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
                         android:text="0 RPM"
                         android:textColor="@color/accent_cyan"
-                        android:textSize="24sp"
+                        android:textSize="32sp"
                         android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
@@ -187,66 +263,95 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
+                <!-- Coolant -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="COOLANT"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveCoolant"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- °C"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
+                <!-- Throttle -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="THROTTLE"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveThrottle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="0%"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
+                <!-- Real Meter Odometer -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="ODOMETER"
+                        android:text="METER ODO"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveOdometer"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- km"
                         android:textColor="@color/accent_green"
                         android:textSize="16sp"
@@ -258,66 +363,95 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
+                <!-- Live Mileage -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="LIVE MILEAGE"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveMileage"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- km/L"
                         android:textColor="@color/accent_green"
                         android:textSize="16sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
+                <!-- Fuel Rate -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="FUEL RATE"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveFuelRate"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="0.00 L/h"
                         android:textColor="@color/accent_amber"
                         android:textSize="16sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
+                <Space
+                    android:layout_width="8dp"
+                    android:layout_height="wrap_content" />
+
+                <!-- Trip Fuel -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="TRIP FUEL"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvLiveTripFuel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="0.00 L"
                         android:textColor="@color/accent_cyan"
                         android:textSize="16sp"
@@ -331,7 +465,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -340,7 +474,7 @@
                 android:layout_height="wrap_content"
                 android:text="AGGREGATE STATS &amp; FUEL ECONOMY"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Row 1: Total Distance Ridden & Avg Speed -->
@@ -354,71 +488,84 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="TOTAL KM RIDDEN"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggTotalOdo"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- km"
                         android:textColor="@color/accent_green"
                         android:textSize="20sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggTrackedDistance"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="App Logged: 0.0 km"
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp" />
                 </LinearLayout>
 
+                <Space
+                    android:layout_width="10dp"
+                    android:layout_height="wrap_content" />
+
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="AVG SPEED TILL NOW"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggAvgSpeed"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- km/h"
                         android:textColor="@color/accent_cyan"
                         android:textSize="20sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggTopSpeed"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="Lifetime Top: -- km/h"
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
-                android:background="@color/border_color" />
-
             <!-- Row 2: Fuel Capacity Remaining & Mileage Reported -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <!-- Fuel Remaining -->
@@ -426,54 +573,74 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="FUEL REMAINING"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggFuelRemaining"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="10.0 L (100%)"
                         android:textColor="@color/accent_amber"
                         android:textSize="18sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggEstRange"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="Est. Range: ~485 km"
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp" />
                 </LinearLayout>
+
+                <Space
+                    android:layout_width="10dp"
+                    android:layout_height="wrap_content" />
 
                 <!-- Mileage As Of Now -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:background="@drawable/bg_stat_tile"
+                    android:orientation="vertical"
+                    android:padding="10dp">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="MILEAGE AS OF NOW"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggMileageNow"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="-- km/L"
                         android:textColor="@color/accent_green"
                         android:textSize="18sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvAggTripAvgMileage"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
                         android:text="Avg: 48.5 km/L (155cc)"
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp" />
@@ -484,9 +651,9 @@
             <Button
                 android:id="@+id/btnLogRefuel"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_marginTop="12dp"
-                android:backgroundTint="@color/border_color"
+                android:background="@drawable/btn_secondary_dark"
                 android:text="⛽ Refueled? Log Full Tank (10.0 L)"
                 android:textColor="@color/text_primary"
                 android:textSize="13sp" />
@@ -497,7 +664,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -506,7 +673,7 @@
                 android:layout_height="wrap_content"
                 android:text="OFFLINE DTC ENGINE DIAGNOSTICS"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -516,7 +683,7 @@
                 android:layout_marginTop="6dp"
                 android:text="Engine Diagnostics: All Systems Normal"
                 android:textColor="@color/accent_green"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -526,7 +693,7 @@
                 android:layout_marginTop="4dp"
                 android:text="No fault codes detected. ECU operating within normal parameters."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- Odometer-Driven Maintenance Tracker Card -->
@@ -534,7 +701,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -543,7 +710,7 @@
                 android:layout_height="wrap_content"
                 android:text="ODOMETER-DRIVEN MAINTENANCE"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <!-- Chain Lube Item -->
@@ -551,19 +718,25 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:orientation="horizontal">
+                android:background="@drawable/bg_stat_tile"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="10dp">
+
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Drive Chain Lube (Every 500 km)"
                         android:textColor="@color/text_primary"
-                        android:textSize="14sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvChainLubeStatus"
                         android:layout_width="wrap_content"
@@ -573,34 +746,43 @@
                         android:textColor="@color/accent_cyan"
                         android:textSize="12sp" />
                 </LinearLayout>
+
                 <Button
                     android:id="@+id/btnResetChainLube"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
-                    android:backgroundTint="@color/border_color"
+                    android:background="@drawable/btn_secondary_dark"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:text="Lube Done"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp" />
             </LinearLayout>
 
             <!-- Engine Oil Item -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:orientation="horizontal">
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_stat_tile"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="10dp">
+
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Engine Oil Change (Every 3,000 km)"
                         android:textColor="@color/text_primary"
-                        android:textSize="14sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
+
                     <TextView
                         android:id="@+id/tvEngineOilStatus"
                         android:layout_width="wrap_content"
@@ -610,14 +792,17 @@
                         android:textColor="@color/accent_green"
                         android:textSize="12sp" />
                 </LinearLayout>
+
                 <Button
                     android:id="@+id/btnResetEngineOil"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
-                    android:backgroundTint="@color/border_color"
+                    android:background="@drawable/btn_secondary_dark"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:text="Oil Replaced"
-                    android:textSize="12sp"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -626,7 +811,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -635,7 +820,7 @@
                 android:layout_height="wrap_content"
                 android:text="ZERO-CLICK AUTOMATIC RIDE LOGS"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -643,18 +828,21 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:lineSpacingExtra="2dp"
                 android:text="No rides logged yet. Turn on ignition and ride to start auto-recording!"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
 
             <Button
                 android:id="@+id/btnExportLastGpx"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_marginTop="12dp"
-                android:backgroundTint="@color/accent_yamaha_blue"
+                android:background="@drawable/btn_primary_blue"
                 android:text="Export Last Ride GPX (Strava / Garmin)"
                 android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -663,7 +851,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -672,7 +860,7 @@
                 android:layout_height="wrap_content"
                 android:text="LAST PARKED LOCATION"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -682,7 +870,7 @@
                 android:layout_marginTop="6dp"
                 android:text="No recorded parking spot"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/tvParkedTime"
@@ -696,11 +884,12 @@
             <Button
                 android:id="@+id/btnNavigateToBike"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_marginTop="12dp"
-                android:backgroundTint="@color/border_color"
-                android:text="Navigate to Motorcycle"
-                android:textColor="@color/text_primary" />
+                android:background="@drawable/btn_secondary_dark"
+                android:text="🧭 Navigate to Motorcycle"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <!-- Meter Cluster Indicators Card -->
@@ -708,7 +897,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -717,7 +906,7 @@
                 android:layout_height="wrap_content"
                 android:text="CLUSTER METER SYNC"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -732,7 +921,7 @@
                     android:layout_weight="1"
                     android:text="Phone Battery (Packet 0x058A)"
                     android:textColor="@color/text_primary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
 
                 <TextView
                     android:id="@+id/tvBatteryPercent"
@@ -740,7 +929,7 @@
                     android:layout_height="wrap_content"
                     android:text="--%"
                     android:textColor="@color/accent_green"
-                    android:textSize="15sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -750,7 +939,7 @@
                 android:layout_marginTop="8dp"
                 android:text="• Clock auto-synced to motorcycle instrument cluster"
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -758,7 +947,7 @@
                 android:layout_marginTop="4dp"
                 android:text="• Incoming call indicator auto-relayed to LCD cluster"
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- Permissions Card -->
@@ -768,7 +957,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:layout_marginBottom="24dp"
-            android:background="@color/card_bg"
+            android:background="@drawable/bg_card_rounded"
             android:orientation="vertical"
             android:padding="16dp">
 
@@ -777,7 +966,7 @@
                 android:layout_height="wrap_content"
                 android:text="PRIVACY &amp; PERMISSIONS"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -786,16 +975,17 @@
                 android:layout_marginTop="6dp"
                 android:text="100% Offline • Zero Analytics • Zero Cloud Telemetry. All ride tracks and diagnostics remain strictly on your device."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btnGrantPermissions"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="44dp"
                 android:layout_marginTop="12dp"
-                android:backgroundTint="@color/border_color"
+                android:background="@drawable/btn_secondary_dark"
                 android:text="Check / Grant Permissions"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
         </LinearLayout>
 
     </LinearLayout>
