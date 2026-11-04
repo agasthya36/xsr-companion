@@ -13,8 +13,12 @@ public final class YamahaProtocol {
     public static final String PREFIX_YCCU = "YCCU_";
     public static final String PREFIX_YSCCU = "YSCCU_";
 
-    public static final byte START_BYTE_A6 = (byte) 0xA6; // 166 or -90
-    public static final byte START_BYTE_5A = (byte) 0x5A; // 90
+    public static final byte START_BYTE_AUTH = (byte) 0xAA; // 170 (-86)
+    public static final byte START_BYTE_A6 = (byte) 0xA6;   // 166 (-90)
+    public static final byte START_BYTE_5A = (byte) 0x5A;   // 90
+    public static final byte START_BYTE_55 = (byte) 0x55;   // 85 (Local Telemetry)
+    public static final byte START_BYTE_56 = (byte) 0x56;   // 86 (CAN Telemetry)
+    public static final byte START_BYTE_5B = (byte) 0x5B;   // 91 (Common Records)
     public static final byte GROUP_COMMON = 0x01;
 
     private YamahaProtocol() {}
@@ -28,6 +32,12 @@ public final class YamahaProtocol {
             sum += (data[i] & 0xFF);
         }
         return (byte) ((256 - (sum & 0xFF)) & 0xFF);
+    }
+
+    public static boolean verifyChecksum(byte[] data) {
+        if (data == null || data.length < 3) return false;
+        byte expected = calculateChecksum(data, data.length - 1);
+        return data[data.length - 1] == expected;
     }
 
     /**
@@ -120,13 +130,12 @@ public final class YamahaProtocol {
 
         target.timestamp = System.currentTimeMillis();
 
-        // Check if packet matches 0x0148 / 0x0200 ICE Local data frame:
-        // Byte 0: Start (0x5A or 0xA6 or 0xA7)
-        // Byte 2-3: Frame ID
+        byte startByte = data[0];
         int frameId = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
 
-        // Standard LOCAL Frame: Engine RPM, Speed, Throttle, Temp, ODO, DTC
-        if (frameId == 0x0148 || frameId == 0x0200 || data[0] == 0x5A || data[0] == (byte) 0xA7) {
+        // 1. Local Real-Time Telemetry Frame (0x55, 0x5A, 0x0148, 0x0200)
+        // CCU sends 0x55 (85) with 0x0148 or 0x0200 records for ICE bikes
+        if (startByte == START_BYTE_55 || startByte == START_BYTE_5A || frameId == 0x0148 || frameId == 0x0200) {
             int offset = 5;
             if (data.length >= 16) {
                 // RPM: 2 bytes (UShort)
@@ -144,7 +153,7 @@ public final class YamahaProtocol {
                     target.airTemp = data[offset + 5] & 0xFF;
                 }
                 // DTC count & code
-                if (offset + 7 < data.length) {
+                if (offset + 8 < data.length) {
                     target.dtcCount = data[offset + 6] & 0xFF;
                     target.dtcCode = ((data[offset + 7] & 0xFF) << 8) | (data[offset + 8] & 0xFF);
                 }
@@ -162,16 +171,70 @@ public final class YamahaProtocol {
             }
         }
 
-        // Standard CAN Frame (0x0300): Warning lamp & injection
-        if (frameId == 0x0300 || data.length >= 8) {
+        // 2. CAN Frame (0x56 or 0x0300): Warning lamp, fuel injection, malfunction
+        if (startByte == START_BYTE_56 || frameId == 0x0300 || data.length >= 8) {
             for (int i = 0; i < data.length - 2; i++) {
-                if (data[i] == 0x03 && data[i + 1] == 0x0D) { // Warning lamp key
+                if (data[i] == 0x03 && data[i + 1] == 0x0D) { // Warning lamp key (0x0300000D)
                     target.warningLamp = (data[i + 2] & 0xFF) == 1;
+                } else if (data[i] == 0x03 && data[i + 1] == 0x0E && i + 3 < data.length) { // Injection amount (0x0300000E)
+                    int rawInj = ((data[i + 2] & 0xFF) << 8) | (data[i + 3] & 0xFF);
+                    target.fuelInjection = rawInj / 100.0;
                 }
             }
             return true;
         }
 
+        // 3. Start Processing Ack (0x5A) or Common Frame (0x5B)
+        if (startByte == START_BYTE_5A || startByte == START_BYTE_5B) {
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Calculates estimated fuel flow rate (litres / hour) for the Yamaha 155cc VVA engine.
+     * Uses speed-density airflow estimation tuned to the 155.1cc displacement,
+     * stoichiometric air-fuel ratio (14.7:1), gasoline density (740 g/L), and
+     * throttle-derived volumetric efficiency (VE).
+     */
+    public static double calculateFuelRateLh(int rpm, double throttlePct, int airTempC, double pressureKpa) {
+        if (rpm <= 0) return 0.0;
+        // Displacement: 155.1 cc = 0.1551 L
+        // 4-stroke single cylinder: 1 intake event every 2 revolutions -> rpm / 120 intake strokes / sec
+        double throttleNorm = Math.max(0.0, Math.min(100.0, throttlePct)) / 100.0;
+        // Volumetric Efficiency (VE) curve for Yamaha 155cc 4V SOHC VVA:
+        // ~0.28 at idle (closed butterfly with bypass air), up to ~0.90 at wide-open throttle (VVA cam lobe)
+        double ve = 0.28 + (0.62 * Math.pow(throttleNorm, 0.85));
+
+        // Air density (kg/m3 == g/L) adjusted for intake temperature and barometric pressure
+        double tempK = (airTempC > -20 && airTempC < 80) ? (airTempC + 273.15) : 298.15;
+        double pressKpa = (pressureKpa > 50 && pressureKpa < 120) ? pressureKpa : 101.325;
+        // Gas law: rho = P / (R_specific * T), R_specific = 287.058 J/(kg*K)
+        double airDensityGL = (pressKpa * 1000.0) / (287.058 * tempK);
+
+        // Airflow in grams/second:
+        double airFlowGs = ((rpm / 120.0) * 0.1551 * ve) * airDensityGL;
+
+        // Stoichiometric ratio for unleaded gasoline: 14.7 grams air per 1 gram fuel
+        // Density of gasoline: ~740 grams / Litre
+        // Fuel rate (L/h) = (airFlowGs / 14.7 / 740) * 3600
+        double fuelRateLh = ((airFlowGs / 14.7) / 740.0) * 3600.0;
+        return Math.max(0.0, fuelRateLh);
+    }
+
+    /**
+     * Calculates instantaneous mileage in km/L from vehicle speed (km/h) and fuel rate (L/h).
+     * Accounts for overrun fuel cut-off when coasting / decelerating in gear.
+     */
+    public static double calculateInstantMileageKmL(int speedKmh, double fuelRateLh, double throttlePct) {
+        if (speedKmh <= 1) return 0.0; // Stopped: 0 km/L (infinite L/100km)
+        // Fuel overrun cut-off: during deceleration with closed throttle at speed > 15 km/h
+        if (throttlePct < 1.0 && speedKmh > 15) {
+            return 99.9; // Fuel cutoff active
+        }
+        if (fuelRateLh <= 0.05) return 99.9;
+        double kmL = speedKmh / fuelRateLh;
+        return Math.min(99.9, Math.max(5.0, kmL));
     }
 }

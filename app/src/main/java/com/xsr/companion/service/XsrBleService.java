@@ -17,7 +17,9 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -33,20 +35,28 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.ParcelUuid;
 import android.telephony.TelephonyCallback;
 import android.telephony.TelephonyManager;
+import android.util.Log;
 
 import com.xsr.companion.data.RideDatabaseHelper;
+import com.xsr.companion.maintenance.FuelManager;
 import com.xsr.companion.maintenance.MaintenanceManager;
 import com.xsr.companion.protocol.BikeTelemetry;
 import com.xsr.companion.protocol.YamahaProtocol;
 import com.xsr.companion.ui.MainActivity;
 
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 @SuppressLint("MissingPermission")
 public class XsrBleService extends Service {
+
+    private static final String TAG = "XsrBleService";
 
     public static final String CHANNEL_ID = "xsr_companion_service";
     public static final int NOTIFICATION_ID = 155;
@@ -61,6 +71,8 @@ public class XsrBleService extends Service {
     public static final String EXTRA_STATUS_TEXT = "extra_status_text";
     public static final String EXTRA_IS_CONNECTED = "extra_is_connected";
     public static final String EXTRA_BATTERY_LEVEL = "extra_battery_level";
+    public static final String EXTRA_PACKET_COUNT = "extra_packet_count";
+    public static final String EXTRA_DEVICE_NAME = "extra_device_name";
 
     public static final String BROADCAST_TELEMETRY = "com.xsr.companion.BROADCAST_TELEMETRY";
     public static final String EXTRA_SPEED = "extra_speed";
@@ -70,6 +82,12 @@ public class XsrBleService extends Service {
     public static final String EXTRA_ODO = "extra_odo";
     public static final String EXTRA_WARNING = "extra_warning";
     public static final String EXTRA_DTC_CODE = "extra_dtc_code";
+    public static final String EXTRA_INSTANT_MILEAGE = "extra_instant_mileage";
+    public static final String EXTRA_TRIP_AVG_MILEAGE = "extra_trip_avg_mileage";
+    public static final String EXTRA_FUEL_RATE = "extra_fuel_rate";
+    public static final String EXTRA_TRIP_FUEL_L = "extra_trip_fuel_l";
+    public static final String EXTRA_REMAINING_FUEL_L = "extra_remaining_fuel_l";
+    public static final String EXTRA_ESTIMATED_RANGE_KM = "extra_estimated_range_km";
 
     public static final String BROADCAST_RIDE_FINISHED = "com.xsr.companion.BROADCAST_RIDE_FINISHED";
 
@@ -79,6 +97,20 @@ public class XsrBleService extends Service {
     public static final String PREF_PARKED_LAT = "parked_latitude";
     public static final String PREF_PARKED_LON = "parked_longitude";
     public static final String PREF_PARKED_TIME = "parked_timestamp";
+    public static final String PREF_LATEST_BIKE_ODO = "pref_latest_bike_odo";
+
+    // Public static state for instant Activity UI synchronization
+    public static volatile boolean sIsConnected = false;
+    public static volatile String sStatusText = "Disconnected";
+    public static volatile String sDeviceName = "No CCU Paired";
+    public static volatile int sPacketCount = 0;
+    public static volatile int sBatteryLevel = 100;
+    public static volatile double sInstantMileage = 0.0;
+    public static volatile double sTripAvgMileage = 48.5;
+    public static volatile double sFuelRemainingL = 10.0;
+    public static volatile double sEstimatedRangeKm = 485.0;
+    public static volatile double sLatestBikeOdo = 0.0;
+    public static final BikeTelemetry sLatestTelemetry = new BikeTelemetry();
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothLeScanner bleScanner;
@@ -88,25 +120,30 @@ public class XsrBleService extends Service {
     private boolean isScanning = false;
     private boolean isConnected = false;
     private int currentBatteryLevel = 100;
+    private int packetCount = 0;
+    private String currentDeviceName = "No CCU Paired";
+
     private boolean isIncomingCall = false;
     private boolean isMissedCall = false;
     private boolean hasUnreadMessage = false;
 
     private int syncCounter = 0;
-    private Handler syncHandler;
+    private Handler mainHandler;
     private Runnable syncRunnable;
 
     private SharedPreferences prefs;
     private RideDatabaseHelper rideDb;
     private MaintenanceManager maintenanceManager;
+    private FuelManager fuelManager;
     private final BikeTelemetry latestTelemetry = new BikeTelemetry();
 
     private LocationManager locationManager;
     private Location currentLocation = null;
     private long currentRideId = -1;
     private long lastPointRecordTime = 0;
+    private double rideStartOdo = 0.0;
 
-    // Battery receiver
+    // Battery level receiver
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -138,8 +175,16 @@ public class XsrBleService extends Service {
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         rideDb = new RideDatabaseHelper(this);
         maintenanceManager = new MaintenanceManager(this);
+        fuelManager = new FuelManager(this);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        syncHandler = new Handler(Looper.getMainLooper());
+        mainHandler = new Handler(Looper.getMainLooper());
+
+        currentDeviceName = prefs.getString(PREF_LAST_NAME, "No CCU Paired");
+        sDeviceName = currentDeviceName;
+        sIsConnected = isConnected;
+        sLatestBikeOdo = prefs.getFloat(PREF_LATEST_BIKE_ODO, 0.0f);
+        sFuelRemainingL = fuelManager.getRemainingLitres();
+        sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML);
 
         BluetoothManager bm = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         if (bm != null) {
@@ -231,16 +276,27 @@ public class XsrBleService extends Service {
     }
 
     private void broadcastStatus(String statusText) {
+        sIsConnected = isConnected;
+        sStatusText = statusText;
+        sDeviceName = currentDeviceName;
+        sPacketCount = packetCount;
+        sBatteryLevel = currentBatteryLevel;
+
+        Log.i(TAG, "Status: " + statusText);
         Intent intent = new Intent(BROADCAST_STATUS);
+        intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_STATUS_TEXT, statusText);
         intent.putExtra(EXTRA_IS_CONNECTED, isConnected);
         intent.putExtra(EXTRA_BATTERY_LEVEL, currentBatteryLevel);
+        intent.putExtra(EXTRA_PACKET_COUNT, packetCount);
+        intent.putExtra(EXTRA_DEVICE_NAME, currentDeviceName);
         sendBroadcast(intent);
         updateNotification(statusText);
     }
 
     private void broadcastTelemetry() {
         Intent intent = new Intent(BROADCAST_TELEMETRY);
+        intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_SPEED, latestTelemetry.speedKmh);
         intent.putExtra(EXTRA_RPM, latestTelemetry.engineRpm);
         intent.putExtra(EXTRA_THROTTLE, latestTelemetry.throttlePct);
@@ -248,23 +304,97 @@ public class XsrBleService extends Service {
         intent.putExtra(EXTRA_ODO, latestTelemetry.odometerKm);
         intent.putExtra(EXTRA_WARNING, latestTelemetry.warningLamp);
         intent.putExtra(EXTRA_DTC_CODE, latestTelemetry.dtcCode);
+        intent.putExtra(EXTRA_INSTANT_MILEAGE, latestTelemetry.instantMileageKmL);
+        intent.putExtra(EXTRA_TRIP_AVG_MILEAGE, latestTelemetry.tripAvgMileageKmL);
+        intent.putExtra(EXTRA_FUEL_RATE, latestTelemetry.fuelConsumptionRateLh);
+        intent.putExtra(EXTRA_TRIP_FUEL_L, latestTelemetry.tripFuelConsumedL);
+        intent.putExtra(EXTRA_REMAINING_FUEL_L, latestTelemetry.remainingFuelL);
+        intent.putExtra(EXTRA_ESTIMATED_RANGE_KM, sEstimatedRangeKm);
         sendBroadcast(intent);
     }
 
-    private void startScan() {
-        if (bleScanner == null || isScanning || isConnected) return;
+    /**
+     * Checks if the Yamaha CCU is already paired/bonded in Android OS.
+     * If found, establishes a direct LE GATT connection immediately.
+     */
+    public boolean connectToBondedIfPresent() {
+        if (bluetoothAdapter == null) return false;
+        try {
+            Set<BluetoothDevice> bondedDevices = bluetoothAdapter.getBondedDevices();
+            if (bondedDevices != null && !bondedDevices.isEmpty()) {
+                String savedMac = prefs.getString(PREF_LAST_MAC, "");
+                for (BluetoothDevice device : bondedDevices) {
+                    String name = device.getName();
+                    String addr = device.getAddress();
+
+                    boolean isYamaha = (name != null && (name.startsWith(YamahaProtocol.PREFIX_YSCCU) || name.startsWith(YamahaProtocol.PREFIX_YCCU)))
+                            || (addr != null && addr.equalsIgnoreCase("CA:D7:9C:D9:40:4A"))
+                            || (savedMac != null && !savedMac.isEmpty() && addr != null && addr.equalsIgnoreCase(savedMac));
+
+                    if (isYamaha) {
+                        String displayName = name != null ? name : "YSCCU (" + addr + ")";
+                        currentDeviceName = displayName;
+                        broadcastStatus("Found bonded CCU: " + displayName + ", connecting directly...");
+                        connectToDevice(device);
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking bonded devices: " + e.getMessage());
+        }
+        return false;
+    }
+
+    public void startScan() {
+        if (isConnected) {
+            broadcastStatus("Already connected to CCU");
+            return;
+        }
+
+        // 1. Prioritize connecting directly to already-bonded CCU
+        if (connectToBondedIfPresent()) {
+            return;
+        }
+
+        if (bleScanner == null) {
+            if (bluetoothAdapter != null) {
+                bleScanner = bluetoothAdapter.getBluetoothLeScanner();
+            }
+            if (bleScanner == null) {
+                broadcastStatus("Bluetooth LE Scanner not available");
+                return;
+            }
+        }
+
+        if (isScanning) return;
         isScanning = true;
         broadcastStatus("Scanning for Yamaha CCU...");
 
         try {
-            bleScanner.startScan(scanCallback);
+            List<ScanFilter> filters = new ArrayList<>();
+            // Match advertised name prefix or CCU ID
+            filters.add(new ScanFilter.Builder().setDeviceName("YSCCU_00000005826927").build());
+            // Match Nordic UART Service UUID
+            filters.add(new ScanFilter.Builder().setServiceUuid(new ParcelUuid(YamahaProtocol.NUS_SERVICE_UUID)).build());
+
+            ScanSettings settings = new ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .build();
+
+            bleScanner.startScan(filters, settings, scanCallback);
         } catch (Exception e) {
-            isScanning = false;
-            broadcastStatus("Scan error: " + e.getMessage());
+            // Fallback to open scan
+            try {
+                bleScanner.startScan(scanCallback);
+            } catch (Exception e2) {
+                isScanning = false;
+                broadcastStatus("Scan error: " + e2.getMessage());
+            }
         }
     }
 
-    private void stopScan() {
+    public void stopScan() {
         if (bleScanner != null && isScanning) {
             try {
                 bleScanner.stopScan(scanCallback);
@@ -276,15 +406,37 @@ public class XsrBleService extends Service {
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
+            if (result == null) return;
             BluetoothDevice device = result.getDevice();
-            if (device != null && device.getName() != null) {
-                String name = device.getName();
-                if (name.startsWith(YamahaProtocol.PREFIX_YCCU) || name.startsWith(YamahaProtocol.PREFIX_YSCCU)) {
-                    stopScan();
-                    broadcastStatus("Found " + name + ", connecting...");
-                    connectToDevice(device);
-                }
+
+            // Check advertisement record first (where name resides before pairing)
+            String name = null;
+            if (result.getScanRecord() != null && result.getScanRecord().getDeviceName() != null) {
+                name = result.getScanRecord().getDeviceName();
+            } else if (device != null && device.getName() != null) {
+                name = device.getName();
             }
+
+            String addr = device != null ? device.getAddress() : "";
+            String savedMac = prefs.getString(PREF_LAST_MAC, "");
+
+            boolean isMatch = (name != null && (name.startsWith(YamahaProtocol.PREFIX_YSCCU) || name.startsWith(YamahaProtocol.PREFIX_YCCU)))
+                    || addr.equalsIgnoreCase("CA:D7:9C:D9:40:4A")
+                    || (!savedMac.isEmpty() && addr.equalsIgnoreCase(savedMac));
+
+            if (isMatch && device != null) {
+                stopScan();
+                String displayName = name != null ? name : "YSCCU (" + addr + ")";
+                currentDeviceName = displayName;
+                broadcastStatus("Discovered " + displayName + " (" + result.getRssi() + " dBm), connecting...");
+                connectToDevice(device);
+            }
+        }
+
+        @Override
+        public void onScanFailed(int errorCode) {
+            isScanning = false;
+            broadcastStatus("BLE Scan failed (code " + errorCode + ")");
         }
     };
 
@@ -298,10 +450,14 @@ public class XsrBleService extends Service {
 
     private void connectToDevice(BluetoothDevice device) {
         disconnectGatt();
-        broadcastStatus("Connecting to " + device.getName() + "...");
+
+        String name = device.getName() != null ? device.getName() : currentDeviceName;
+        currentDeviceName = name;
+        broadcastStatus("Initiating LE connection to " + name + "...");
+
         prefs.edit()
                 .putString(PREF_LAST_MAC, device.getAddress())
-                .putString(PREF_LAST_NAME, device.getName())
+                .putString(PREF_LAST_NAME, name)
                 .apply();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -315,21 +471,47 @@ public class XsrBleService extends Service {
         stopPeriodicSync();
         stopRideTracking();
         if (bluetoothGatt != null) {
-            bluetoothGatt.disconnect();
-            bluetoothGatt.close();
+            try {
+                bluetoothGatt.disconnect();
+                bluetoothGatt.close();
+            } catch (Exception ignored) {}
             bluetoothGatt = null;
         }
         rxCharacteristic = null;
         isConnected = false;
+        packetCount = 0;
     }
 
+    /**
+     * Sequential BLE GATT Callback State Machine:
+     * 1. STATE_CONNECTED -> requestConnectionPriority(HIGH) -> 300ms delay -> discoverServices()
+     * 2. onServicesDiscovered -> setCharacteristicNotification(6E400003) -> writeDescriptor(0x2902)
+     * 3. onDescriptorWrite -> requestMtu(512)
+     * 4. onMtuChanged -> sendStartStreamingCommand(0x7F01) -> startRideTracking() -> startPeriodicSync()
+     * 5. onCharacteristicChanged -> parseIncomingPacket() -> broadcastTelemetry()
+     */
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
-                broadcastStatus("Connected to Yamaha CCU");
-                gatt.discoverServices();
+                packetCount = 0;
+                broadcastStatus("Connected to CCU. Discovering services...");
+
+                // Set high connection priority for fast telemetry streaming
+                gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+
+                // Delay service discovery slightly to avoid GATT concurrency race condition on Android
+                mainHandler.postDelayed(() -> {
+                    if (bluetoothGatt != null) {
+                        broadcastStatus("Querying CCU GATT services...");
+                        boolean discoveryStarted = bluetoothGatt.discoverServices();
+                        if (!discoveryStarted) {
+                            broadcastStatus("Service discovery initiation failed");
+                        }
+                    }
+                }, 300);
+
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 isConnected = false;
                 stopPeriodicSync();
@@ -341,7 +523,7 @@ public class XsrBleService extends Service {
                 // Save last parked location!
                 saveParkedLocation();
 
-                broadcastStatus("Disconnected (Motorcycle turned OFF)");
+                broadcastStatus("Disconnected (Motorcycle turned OFF or status " + status + ")");
             }
         }
 
@@ -353,35 +535,72 @@ public class XsrBleService extends Service {
                     rxCharacteristic = service.getCharacteristic(YamahaProtocol.NUS_RX_CHAR_UUID);
                     BluetoothGattCharacteristic txCharacteristic = service.getCharacteristic(YamahaProtocol.NUS_TX_CHAR_UUID);
 
+                    if (rxCharacteristic != null) {
+                        rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                    }
+
                     if (txCharacteristic != null) {
                         gatt.setCharacteristicNotification(txCharacteristic, true);
                         BluetoothGattDescriptor descriptor = txCharacteristic.getDescriptor(YamahaProtocol.CLIENT_CONFIG_DESCRIPTOR);
                         if (descriptor != null) {
-                            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                            gatt.writeDescriptor(descriptor);
+                            broadcastStatus("Enabling CCU notifications...");
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                            } else {
+                                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                                gatt.writeDescriptor(descriptor);
+                            }
+                            return;
                         }
                     }
-
-                    // Command CCU to stream telemetry
-                    sendStartStreamingCommand();
-
-                    // Start zero-click ride tracking!
-                    startRideTracking();
-
-                    // Start periodic meter telemetry sync
-                    startPeriodicSync();
-                    broadcastStatus("Connected & Syncing with Meter");
                 }
+                broadcastStatus("CCU NUS Service not found on device");
+            } else {
+                broadcastStatus("Service discovery failed: status " + status);
             }
         }
 
         @Override
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                broadcastStatus("Notifications enabled. Requesting MTU 512...");
+                // Request MTU 512 after descriptor write has successfully completed
+                gatt.requestMtu(512);
+            } else {
+                broadcastStatus("Descriptor write error: " + status);
+            }
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            broadcastStatus("MTU " + mtu + " configured. Starting live stream...");
+
+            // Command CCU to start streaming telemetry
+            sendStartStreamingCommand();
+
+            // Start zero-click ride tracking!
+            startRideTracking();
+
+            // Start periodic meter telemetry sync
+            startPeriodicSync();
+
+            broadcastStatus("Connected & Syncing with Meter");
+        }
+
+        @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            handleCharacteristicUpdate(characteristic.getValue());
+            byte[] value = characteristic.getValue();
+            if (value != null) {
+                Log.d(TAG, "RX Packet (legacy): " + bytesToHex(value));
+            }
+            handleCharacteristicUpdate(value);
         }
 
         // Android 13+ (API 33+)
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, byte[] value) {
+            if (value != null) {
+                Log.d(TAG, "RX Packet (API33+): " + bytesToHex(value));
+            }
             handleCharacteristicUpdate(value);
         }
     };
@@ -390,23 +609,106 @@ public class XsrBleService extends Service {
         if (data == null || data.length == 0) return;
         boolean updated = YamahaProtocol.parseIncomingPacket(data, latestTelemetry);
         if (updated) {
+            packetCount++;
+            sPacketCount = packetCount;
+
+            // 1. Calculate live fuel flow rate and instantaneous mileage
+            double fuelRate = YamahaProtocol.calculateFuelRateLh(
+                    latestTelemetry.engineRpm,
+                    latestTelemetry.throttlePct,
+                    latestTelemetry.airTemp,
+                    latestTelemetry.atmosphericPressure
+            );
+            double instantMileage = YamahaProtocol.calculateInstantMileageKmL(
+                    latestTelemetry.speedKmh,
+                    fuelRate,
+                    latestTelemetry.throttlePct
+            );
+            latestTelemetry.fuelConsumptionRateLh = fuelRate;
+            latestTelemetry.instantMileageKmL = instantMileage;
+
+            // 2. Fuel consumption integration (every ~1s while engine running)
+            if (latestTelemetry.engineRpm > 0 && fuelRate > 0) {
+                double fuelThisSecL = fuelRate / 3600.0;
+                latestTelemetry.tripFuelConsumedL += fuelThisSecL;
+                if (fuelManager != null) {
+                    fuelManager.consumeFuel(fuelThisSecL);
+                }
+            }
+            if (fuelManager != null) {
+                latestTelemetry.remainingFuelL = fuelManager.getRemainingLitres();
+            }
+
+            // 3. Trip average mileage
+            double tripDistanceKm = (currentRideId > 0 && rideStartOdo > 0 && latestTelemetry.odometerKm > rideStartOdo)
+                    ? (latestTelemetry.odometerKm - rideStartOdo)
+                    : 0.0;
+            if (tripDistanceKm > 0.05 && latestTelemetry.tripFuelConsumedL > 0.002) {
+                latestTelemetry.tripAvgMileageKmL = tripDistanceKm / latestTelemetry.tripFuelConsumedL;
+            } else if (instantMileage > 0) {
+                latestTelemetry.tripAvgMileageKmL = instantMileage;
+            } else {
+                latestTelemetry.tripAvgMileageKmL = FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML;
+            }
+
+            // Update static volatiles for instant UI reflection
+            sInstantMileage = instantMileage;
+            sTripAvgMileage = latestTelemetry.tripAvgMileageKmL;
+            sFuelRemainingL = latestTelemetry.remainingFuelL;
+            if (fuelManager != null) {
+                sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(latestTelemetry.tripAvgMileageKmL);
+            }
+
             if (latestTelemetry.odometerKm > 0) {
+                sLatestBikeOdo = latestTelemetry.odometerKm;
+                prefs.edit().putFloat(PREF_LATEST_BIKE_ODO, (float) latestTelemetry.odometerKm).apply();
                 maintenanceManager.updateOdometer(latestTelemetry.odometerKm);
             }
+
+            synchronized (sLatestTelemetry) {
+                sLatestTelemetry.copyFrom(latestTelemetry);
+            }
+
             checkAndRecordRidePoint();
             broadcastTelemetry();
         }
     }
 
+    private void writeCharacteristicData(byte[] packet) {
+        if (bluetoothGatt == null || rxCharacteristic == null || packet == null) return;
+        try {
+            rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+            int res = -1;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                res = bluetoothGatt.writeCharacteristic(rxCharacteristic, packet, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+            } else {
+                rxCharacteristic.setValue(packet);
+                boolean ok = bluetoothGatt.writeCharacteristic(rxCharacteristic);
+                res = ok ? 0 : -1;
+            }
+            Log.d(TAG, "TX Packet (" + packet.length + " bytes, res=" + res + "): " + bytesToHex(packet));
+        } catch (Exception e) {
+            Log.e(TAG, "Write error: " + e.getMessage());
+        }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString().trim();
+    }
+
     private void sendStartStreamingCommand() {
-        if (bluetoothGatt == null || rxCharacteristic == null) return;
         byte[] packet = YamahaProtocol.buildStartStreamingPacket(syncCounter++);
-        rxCharacteristic.setValue(packet);
-        rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-        bluetoothGatt.writeCharacteristic(rxCharacteristic);
+        writeCharacteristicData(packet);
     }
 
     private void startRideTracking() {
+        rideStartOdo = latestTelemetry.odometerKm > 0 ? latestTelemetry.odometerKm : sLatestBikeOdo;
+        latestTelemetry.tripFuelConsumedL = 0.0;
         currentRideId = rideDb.startNewRide(System.currentTimeMillis());
         try {
             if (locationManager != null) {
@@ -451,7 +753,9 @@ public class XsrBleService extends Service {
             boolean saved = rideDb.finalizeRide(currentRideId, System.currentTimeMillis());
             currentRideId = -1;
             if (saved) {
-                sendBroadcast(new Intent(BROADCAST_RIDE_FINISHED));
+                Intent finishIntent = new Intent(BROADCAST_RIDE_FINISHED);
+                finishIntent.setPackage(getPackageName());
+                sendBroadcast(finishIntent);
             }
         }
     }
@@ -465,30 +769,23 @@ public class XsrBleService extends Service {
                     sendClockAndBatterySync();
 
                     // Send notification flags after 100ms
-                    syncHandler.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            sendNotificationSync();
-                        }
-                    }, 100);
+                    mainHandler.postDelayed(() -> sendNotificationSync(), 100);
 
-                    syncHandler.postDelayed(this, 1000);
+                    mainHandler.postDelayed(this, 1000);
                 }
             }
         };
-        syncHandler.post(syncRunnable);
+        mainHandler.post(syncRunnable);
     }
 
     private void stopPeriodicSync() {
         if (syncRunnable != null) {
-            syncHandler.removeCallbacks(syncRunnable);
+            mainHandler.removeCallbacks(syncRunnable);
             syncRunnable = null;
         }
     }
 
     private void sendClockAndBatterySync() {
-        if (bluetoothGatt == null || rxCharacteristic == null) return;
-
         Calendar cal = Calendar.getInstance();
         int year = cal.get(Calendar.YEAR);
         int month = cal.get(Calendar.MONTH) + 1;
@@ -503,14 +800,10 @@ public class XsrBleService extends Service {
                 syncCounter++
         );
 
-        rxCharacteristic.setValue(packet);
-        rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-        bluetoothGatt.writeCharacteristic(rxCharacteristic);
+        writeCharacteristicData(packet);
     }
 
     private void sendNotificationSync() {
-        if (bluetoothGatt == null || rxCharacteristic == null) return;
-
         byte[] packet = YamahaProtocol.buildNotificationPacket(
                 isIncomingCall,
                 isMissedCall,
@@ -519,9 +812,7 @@ public class XsrBleService extends Service {
                 syncCounter++
         );
 
-        rxCharacteristic.setValue(packet);
-        rxCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-        bluetoothGatt.writeCharacteristic(rxCharacteristic);
+        writeCharacteristicData(packet);
     }
 
     private void saveParkedLocation() {

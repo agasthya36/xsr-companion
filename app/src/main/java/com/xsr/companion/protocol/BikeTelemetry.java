@@ -14,6 +14,14 @@ public class BikeTelemetry {
     public double fuelInjection = 0.0;
     public long ecuTotalTimeSec = 0;
     public int ignitionCycles = 0;
+
+    // Fuel & Mileage Calculations
+    public double instantMileageKmL = 0.0;
+    public double fuelConsumptionRateLh = 0.0;
+    public double tripFuelConsumedL = 0.0;
+    public double tripAvgMileageKmL = 0.0;
+    public double remainingFuelL = 10.0;
+
     public long timestamp = 0;
 
     public BikeTelemetry() {
@@ -35,6 +43,11 @@ public class BikeTelemetry {
         this.fuelInjection = other.fuelInjection;
         this.ecuTotalTimeSec = other.ecuTotalTimeSec;
         this.ignitionCycles = other.ignitionCycles;
+        this.instantMileageKmL = other.instantMileageKmL;
+        this.fuelConsumptionRateLh = other.fuelConsumptionRateLh;
+        this.tripFuelConsumedL = other.tripFuelConsumedL;
+        this.tripAvgMileageKmL = other.tripAvgMileageKmL;
+        this.remainingFuelL = other.remainingFuelL;
         this.timestamp = other.timestamp;
     }
 }

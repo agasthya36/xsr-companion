@@ -74,6 +74,35 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
+    public static class AggregateStats {
+        public int totalRidesCount = 0;
+        public double totalDistanceKm = 0.0;
+        public int totalDurationSec = 0;
+        public double overallAvgSpeedKmh = 0.0;
+        public int lifetimeTopSpeedKmh = 0;
+        public int lifetimeMaxRpm = 0;
+        public double totalFuelConsumedL = 0.0;
+        public double overallAvgMileageKmL = 0.0;
+
+        public String getFormattedTotalDuration() {
+            int mins = totalDurationSec / 60;
+            if (mins >= 60) {
+                int hrs = mins / 60;
+                mins = mins % 60;
+                return String.format(Locale.getDefault(), "%dh %02dm", hrs, mins);
+            }
+            return String.format(Locale.getDefault(), "%dm", mins);
+        }
+
+        public String getFormattedDistance() {
+            return String.format(Locale.getDefault(), "%.1f km", totalDistanceKm);
+        }
+
+        public String getFormattedAvgSpeed() {
+            return String.format(Locale.getDefault(), "%.1f km/h", overallAvgSpeedKmh);
+        }
+    }
+
     public static class RidePoint {
         public double latitude;
         public double longitude;
@@ -260,6 +289,30 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
             c.close();
         }
         return list;
+    }
+
+    public AggregateStats getAggregateStats() {
+        AggregateStats stats = new AggregateStats();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.rawQuery("SELECT COUNT(*), SUM(" + COL_DISTANCE_KM + "), SUM(" + COL_DURATION_SEC + "), MAX(" + COL_TOP_SPEED + "), MAX(" + COL_MAX_RPM + ") FROM " + TABLE_RIDES + " WHERE " + COL_DISTANCE_KM + " > 0", null);
+        if (c != null) {
+            if (c.moveToFirst()) {
+                stats.totalRidesCount = c.getInt(0);
+                stats.totalDistanceKm = c.getDouble(1);
+                stats.totalDurationSec = c.getInt(2);
+                stats.lifetimeTopSpeedKmh = c.getInt(3);
+                stats.lifetimeMaxRpm = c.getInt(4);
+
+                if (stats.totalDurationSec > 0 && stats.totalDistanceKm > 0) {
+                    double hours = stats.totalDurationSec / 3600.0;
+                    stats.overallAvgSpeedKmh = stats.totalDistanceKm / hours;
+                }
+                stats.totalFuelConsumedL = stats.totalDistanceKm / 48.5;
+                stats.overallAvgMileageKmL = stats.totalFuelConsumedL > 0 ? (stats.totalDistanceKm / stats.totalFuelConsumedL) : 48.5;
+            }
+            c.close();
+        }
+        return stats;
     }
 
     public void deleteRide(long rideId) {

@@ -19,6 +19,7 @@ import android.widget.Toast;
 import com.xsr.companion.data.RideDatabaseHelper;
 import com.xsr.companion.data.RideFileProvider;
 import com.xsr.companion.diagnostics.DtcManager;
+import com.xsr.companion.maintenance.FuelManager;
 import com.xsr.companion.maintenance.MaintenanceManager;
 import com.xsr.companion.service.XsrBleService;
 
@@ -34,6 +35,8 @@ public class MainActivity extends Activity {
 
     private TextView tvConnectionStatus;
     private TextView tvDeviceName;
+    private TextView tvPacketCounter;
+    private Button btnKillOfficialApp;
     private Button btnScanConnect;
     private Button btnDisconnect;
 
@@ -42,6 +45,19 @@ public class MainActivity extends Activity {
     private TextView tvLiveCoolant;
     private TextView tvLiveThrottle;
     private TextView tvLiveOdometer;
+    private TextView tvLiveMileage;
+    private TextView tvLiveFuelRate;
+    private TextView tvLiveTripFuel;
+
+    private TextView tvAggTotalOdo;
+    private TextView tvAggTrackedDistance;
+    private TextView tvAggAvgSpeed;
+    private TextView tvAggTopSpeed;
+    private TextView tvAggFuelRemaining;
+    private TextView tvAggEstRange;
+    private TextView tvAggMileageNow;
+    private TextView tvAggTripAvgMileage;
+    private Button btnLogRefuel;
 
     private TextView tvDtcStatus;
     private TextView tvDtcDetails;
@@ -64,6 +80,7 @@ public class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private MaintenanceManager maintenanceManager;
+    private FuelManager fuelManager;
     private RideDatabaseHelper rideDb;
     private RideDatabaseHelper.RideSummary latestRide = null;
 
@@ -74,8 +91,10 @@ public class MainActivity extends Activity {
                 String status = intent.getStringExtra(XsrBleService.EXTRA_STATUS_TEXT);
                 boolean isConnected = intent.getBooleanExtra(XsrBleService.EXTRA_IS_CONNECTED, false);
                 int battery = intent.getIntExtra(XsrBleService.EXTRA_BATTERY_LEVEL, -1);
+                int packets = intent.getIntExtra(XsrBleService.EXTRA_PACKET_COUNT, 0);
+                String deviceName = intent.getStringExtra(XsrBleService.EXTRA_DEVICE_NAME);
 
-                updateConnectionUi(status, isConnected);
+                updateConnectionUi(status, isConnected, packets, deviceName);
                 if (battery >= 0) {
                     tvBatteryPercent.setText(battery + "%");
                 }
@@ -87,11 +106,17 @@ public class MainActivity extends Activity {
                 double odo = intent.getDoubleExtra(XsrBleService.EXTRA_ODO, 0.0);
                 boolean warning = intent.getBooleanExtra(XsrBleService.EXTRA_WARNING, false);
                 int dtcCode = intent.getIntExtra(XsrBleService.EXTRA_DTC_CODE, 0);
+                double instantMileage = intent.getDoubleExtra(XsrBleService.EXTRA_INSTANT_MILEAGE, 0.0);
+                double tripAvgMileage = intent.getDoubleExtra(XsrBleService.EXTRA_TRIP_AVG_MILEAGE, 48.5);
+                double fuelRate = intent.getDoubleExtra(XsrBleService.EXTRA_FUEL_RATE, 0.0);
+                double tripFuel = intent.getDoubleExtra(XsrBleService.EXTRA_TRIP_FUEL_L, 0.0);
 
-                updateTelemetryUi(speed, rpm, throttle, coolant, odo, warning, dtcCode);
+                updateTelemetryUi(speed, rpm, throttle, coolant, odo, warning, dtcCode, instantMileage, fuelRate, tripFuel);
+                updateAggregateStatsUi();
             } else if (XsrBleService.BROADCAST_RIDE_FINISHED.equals(intent.getAction())) {
                 updateRecentRidesUi();
                 updateParkedLocationUi();
+                updateAggregateStatsUi();
             }
         }
     };
@@ -103,6 +128,7 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences(XsrBleService.PREFS_NAME, MODE_PRIVATE);
         maintenanceManager = new MaintenanceManager(this);
+        fuelManager = new FuelManager(this);
         rideDb = new RideDatabaseHelper(this);
 
         initViews();
@@ -110,6 +136,8 @@ public class MainActivity extends Activity {
         updateParkedLocationUi();
         updateMaintenanceUi();
         updateRecentRidesUi();
+        updateAggregateStatsUi();
+        refreshUiFromServiceState();
 
         // Start background service
         Intent serviceIntent = new Intent(this, XsrBleService.class);
@@ -118,19 +146,47 @@ public class MainActivity extends Activity {
         } else {
             startService(serviceIntent);
         }
+
+        // Auto-connect to bonded CCU if permissions already granted
+        if (hasRequiredPermissions()) {
+            layoutPermissions.setVisibility(View.GONE);
+            Intent scanIntent = new Intent(this, XsrBleService.class);
+            scanIntent.setAction(XsrBleService.ACTION_START_SCAN);
+            startService(scanIntent);
+        } else {
+            layoutPermissions.setVisibility(View.VISIBLE);
+            checkAndRequestPermissions();
+        }
     }
 
     private void initViews() {
         tvConnectionStatus = findViewById(com.xsr.companion.R.id.tvConnectionStatus);
         tvDeviceName = findViewById(com.xsr.companion.R.id.tvDeviceName);
+        tvPacketCounter = findViewById(com.xsr.companion.R.id.tvPacketCounter);
+        btnKillOfficialApp = findViewById(com.xsr.companion.R.id.btnKillOfficialApp);
         btnScanConnect = findViewById(com.xsr.companion.R.id.btnScanConnect);
         btnDisconnect = findViewById(com.xsr.companion.R.id.btnDisconnect);
+
+        checkOfficialAppInstalled();
 
         tvLiveSpeed = findViewById(com.xsr.companion.R.id.tvLiveSpeed);
         tvLiveRpm = findViewById(com.xsr.companion.R.id.tvLiveRpm);
         tvLiveCoolant = findViewById(com.xsr.companion.R.id.tvLiveCoolant);
         tvLiveThrottle = findViewById(com.xsr.companion.R.id.tvLiveThrottle);
         tvLiveOdometer = findViewById(com.xsr.companion.R.id.tvLiveOdometer);
+        tvLiveMileage = findViewById(com.xsr.companion.R.id.tvLiveMileage);
+        tvLiveFuelRate = findViewById(com.xsr.companion.R.id.tvLiveFuelRate);
+        tvLiveTripFuel = findViewById(com.xsr.companion.R.id.tvLiveTripFuel);
+
+        tvAggTotalOdo = findViewById(com.xsr.companion.R.id.tvAggTotalOdo);
+        tvAggTrackedDistance = findViewById(com.xsr.companion.R.id.tvAggTrackedDistance);
+        tvAggAvgSpeed = findViewById(com.xsr.companion.R.id.tvAggAvgSpeed);
+        tvAggTopSpeed = findViewById(com.xsr.companion.R.id.tvAggTopSpeed);
+        tvAggFuelRemaining = findViewById(com.xsr.companion.R.id.tvAggFuelRemaining);
+        tvAggEstRange = findViewById(com.xsr.companion.R.id.tvAggEstRange);
+        tvAggMileageNow = findViewById(com.xsr.companion.R.id.tvAggMileageNow);
+        tvAggTripAvgMileage = findViewById(com.xsr.companion.R.id.tvAggTripAvgMileage);
+        btnLogRefuel = findViewById(com.xsr.companion.R.id.btnLogRefuel);
 
         tvDtcStatus = findViewById(com.xsr.companion.R.id.tvDtcStatus);
         tvDtcDetails = findViewById(com.xsr.companion.R.id.tvDtcDetails);
@@ -152,6 +208,15 @@ public class MainActivity extends Activity {
         btnGrantPermissions = findViewById(com.xsr.companion.R.id.btnGrantPermissions);
     }
 
+    private void checkOfficialAppInstalled() {
+        try {
+            getPackageManager().getPackageInfo("jp.co.yamaha_motor.yamahamotoron", 0);
+            btnKillOfficialApp.setVisibility(View.VISIBLE);
+        } catch (PackageManager.NameNotFoundException ignored) {
+            btnKillOfficialApp.setVisibility(View.GONE);
+        }
+    }
+
     private void setupListeners() {
         btnScanConnect.setOnClickListener(v -> {
             Intent intent = new Intent(this, XsrBleService.class);
@@ -165,6 +230,17 @@ public class MainActivity extends Activity {
             startService(intent);
         });
 
+        btnKillOfficialApp.setOnClickListener(v -> {
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:jp.co.yamaha_motor.yamahamotoron"));
+                startActivity(intent);
+                Toast.makeText(this, "Tap 'Force Stop' so Yamaha CCU is free to connect", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Please force-stop the Yamaha app in Settings", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         btnResetChainLube.setOnClickListener(v -> {
             maintenanceManager.markServiced("chain_lube");
             updateMaintenanceUi();
@@ -175,6 +251,17 @@ public class MainActivity extends Activity {
             maintenanceManager.markServiced("engine_oil");
             updateMaintenanceUi();
             Toast.makeText(this, "Engine oil replacement logged!", Toast.LENGTH_SHORT).show();
+        });
+
+        btnLogRefuel.setOnClickListener(v -> {
+            double odo = XsrBleService.sLatestBikeOdo > 0 ? XsrBleService.sLatestBikeOdo : prefs.getFloat(XsrBleService.PREF_LATEST_BIKE_ODO, 0.0f);
+            if (fuelManager != null) {
+                fuelManager.resetToFull(odo);
+                XsrBleService.sFuelRemainingL = fuelManager.getRemainingLitres();
+                XsrBleService.sEstimatedRangeKm = fuelManager.getEstimatedRangeKm(XsrBleService.sTripAvgMileage);
+            }
+            updateAggregateStatsUi();
+            Toast.makeText(this, "⛽ Refuel Logged! Tank reset to 10.0 L (Full)", Toast.LENGTH_SHORT).show();
         });
 
         btnExportLastGpx.setOnClickListener(v -> {
@@ -202,16 +289,26 @@ public class MainActivity extends Activity {
         btnGrantPermissions.setOnClickListener(v -> checkAndRequestPermissions());
     }
 
-    private void updateConnectionUi(String status, boolean isConnected) {
+    private void updateConnectionUi(String status, boolean isConnected, int packetCount, String deviceName) {
         tvConnectionStatus.setText(status != null ? status : (isConnected ? "Connected" : "Disconnected"));
         int color = isConnected ? 0xFF00E676 : 0xFFFF5252;
         tvConnectionStatus.setTextColor(color);
 
-        String savedName = prefs.getString(XsrBleService.PREF_LAST_NAME, "No CCU Paired");
-        tvDeviceName.setText(savedName);
+        String name = deviceName != null && !deviceName.isEmpty() ? deviceName : prefs.getString(XsrBleService.PREF_LAST_NAME, "No CCU Paired");
+        tvDeviceName.setText(name);
+
+        if (packetCount > 0) {
+            tvPacketCounter.setVisibility(View.VISIBLE);
+            tvPacketCounter.setText("Packets Received: " + packetCount + " • Live Telemetry Active");
+        } else if (isConnected) {
+            tvPacketCounter.setVisibility(View.VISIBLE);
+            tvPacketCounter.setText("GATT Active • Negotiating MTU 512...");
+        } else {
+            tvPacketCounter.setVisibility(View.GONE);
+        }
     }
 
-    private void updateTelemetryUi(int speed, int rpm, double throttle, int coolant, double odo, boolean warning, int dtcCode) {
+    private void updateTelemetryUi(int speed, int rpm, double throttle, int coolant, double odo, boolean warning, int dtcCode, double instantMileage, double fuelRate, double tripFuel) {
         tvLiveSpeed.setText(speed + " km/h");
         tvLiveRpm.setText(rpm + " RPM");
         tvLiveCoolant.setText(coolant > 0 ? (coolant + " °C") : "-- °C");
@@ -219,6 +316,16 @@ public class MainActivity extends Activity {
         if (odo > 0) {
             tvLiveOdometer.setText(String.format(Locale.getDefault(), "%.1f km", odo));
             updateMaintenanceUi();
+        }
+
+        if (tvLiveMileage != null) {
+            tvLiveMileage.setText(instantMileage > 0.5 ? String.format(Locale.getDefault(), "%.1f km/L", instantMileage) : "-- km/L");
+        }
+        if (tvLiveFuelRate != null) {
+            tvLiveFuelRate.setText(String.format(Locale.getDefault(), "%.2f L/h", fuelRate));
+        }
+        if (tvLiveTripFuel != null) {
+            tvLiveTripFuel.setText(String.format(Locale.getDefault(), "%.2f L", tripFuel));
         }
 
         // DTC Engine Diagnostics
@@ -232,6 +339,52 @@ public class MainActivity extends Activity {
             tvDtcStatus.setTextColor(0xFF00E676);
             tvDtcDetails.setText("No active fault codes. ECU operating within normal parameters.");
         }
+    }
+
+    private void updateAggregateStatsUi() {
+        RideDatabaseHelper.AggregateStats stats = rideDb.getAggregateStats();
+
+        // 1. Total kilometres ridden till now
+        double factoryOdo = XsrBleService.sLatestBikeOdo > 0 ? XsrBleService.sLatestBikeOdo : prefs.getFloat(XsrBleService.PREF_LATEST_BIKE_ODO, 0.0f);
+        if (factoryOdo > 0) {
+            tvAggTotalOdo.setText(String.format(Locale.getDefault(), "%.1f km", factoryOdo));
+        } else {
+            tvAggTotalOdo.setText(stats.totalDistanceKm > 0 ? String.format(Locale.getDefault(), "%.1f km (App)", stats.totalDistanceKm) : "-- km");
+        }
+        tvAggTrackedDistance.setText(String.format(Locale.getDefault(), "App Logged: %.1f km (%d rides)", stats.totalDistanceKm, stats.totalRidesCount));
+
+        // 2. Average speed till now
+        if (stats.totalDurationSec > 0 && stats.totalDistanceKm > 0) {
+            tvAggAvgSpeed.setText(String.format(Locale.getDefault(), "%.1f km/h", stats.overallAvgSpeedKmh));
+        } else {
+            tvAggAvgSpeed.setText("-- km/h");
+        }
+        tvAggTopSpeed.setText(stats.lifetimeTopSpeedKmh > 0 ? String.format(Locale.getDefault(), "Lifetime Top: %d km/h", stats.lifetimeTopSpeedKmh) : "Lifetime Top: -- km/h");
+
+        // 3. Fuel capacity remaining
+        float remainingLitres = fuelManager != null ? fuelManager.getRemainingLitres() : (float) XsrBleService.sFuelRemainingL;
+        float remainingPct = fuelManager != null ? fuelManager.getRemainingPercent() : 100f;
+        tvAggFuelRemaining.setText(String.format(Locale.getDefault(), "%.1f L (%.0f%%)", remainingLitres, remainingPct));
+        if (remainingLitres <= 2.0f) {
+            tvAggFuelRemaining.setTextColor(0xFFFF5252); // Low fuel reserve warning
+        } else if (remainingLitres <= 4.0f) {
+            tvAggFuelRemaining.setTextColor(0xFFFFD600); // Amber warning
+        } else {
+            tvAggFuelRemaining.setTextColor(0xFFFFD600);
+        }
+
+        double avgMileage = XsrBleService.sTripAvgMileage > 5.0 ? XsrBleService.sTripAvgMileage : (stats.overallAvgMileageKmL > 5.0 ? stats.overallAvgMileageKmL : FuelManager.DEFAULT_ESTIMATED_MILEAGE_KML);
+        double estRange = fuelManager != null ? fuelManager.getEstimatedRangeKm(avgMileage) : XsrBleService.sEstimatedRangeKm;
+        tvAggEstRange.setText(String.format(Locale.getDefault(), "Est. Range: ~%.0f km", estRange));
+
+        // 4. Mileage as of now reported in bike
+        double instantMileage = XsrBleService.sInstantMileage;
+        if (instantMileage > 0.5) {
+            tvAggMileageNow.setText(String.format(Locale.getDefault(), "%.1f km/L", instantMileage));
+        } else {
+            tvAggMileageNow.setText("-- km/L");
+        }
+        tvAggTripAvgMileage.setText(String.format(Locale.getDefault(), "Trip Avg: %.1f km/L", avgMileage));
     }
 
     private void updateMaintenanceUi() {
@@ -322,6 +475,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean hasRequiredPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        }
+    }
+
     private void checkAndRequestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             String[] perms = {
@@ -344,6 +507,52 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == PERMISSION_REQ_CODE) {
+            if (hasRequiredPermissions()) {
+                layoutPermissions.setVisibility(View.GONE);
+                Intent intent = new Intent(this, XsrBleService.class);
+                intent.setAction(XsrBleService.ACTION_START_SCAN);
+                startService(intent);
+            } else {
+                layoutPermissions.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
+    private void refreshUiFromServiceState() {
+        updateConnectionUi(
+                XsrBleService.sStatusText,
+                XsrBleService.sIsConnected,
+                XsrBleService.sPacketCount,
+                XsrBleService.sDeviceName
+        );
+
+        if (XsrBleService.sBatteryLevel >= 0) {
+            tvBatteryPercent.setText(XsrBleService.sBatteryLevel + "%");
+        }
+
+        synchronized (XsrBleService.sLatestTelemetry) {
+            com.xsr.companion.protocol.BikeTelemetry t = XsrBleService.sLatestTelemetry;
+            if (t.timestamp > 0) {
+                updateTelemetryUi(
+                        t.speedKmh,
+                        t.engineRpm,
+                        t.throttlePct,
+                        t.coolantTemp,
+                        t.odometerKm,
+                        t.warningLamp,
+                        t.dtcCode,
+                        t.instantMileageKmL,
+                        t.fuelConsumptionRateLh,
+                        t.tripFuelConsumedL
+                );
+            }
+        }
+        updateAggregateStatsUi();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         IntentFilter filter = new IntentFilter();
@@ -356,8 +565,10 @@ public class MainActivity extends Activity {
             registerReceiver(statusReceiver, filter);
         }
 
+        refreshUiFromServiceState();
         updateMaintenanceUi();
         updateRecentRidesUi();
+        updateAggregateStatsUi();
     }
 
     @Override

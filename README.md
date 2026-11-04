@@ -19,6 +19,16 @@ Replaces the bloated official Yamaha Motor On / Y-Connect application (90.7 MB, 
 
 ## Features
 
+### 📊 Aggregate Stats & Real-Time Fuel Economy
+* **Lifetime Distance & Odometer**: Displays both the factory motorcycle cumulative odometer (`0x0200000A`) streamed from the CCU and total companion app-logged riding distance across all recorded rides.
+* **Lifetime Speed Metrics**: Accurately computes overall lifetime average speed across all rides ($\sum \text{distance} / \sum \text{time}$) and lifetime top speed.
+* **Instantaneous Mileage (km/L)**: Live real-time fuel efficiency calculated via speed-density air-fuel ratio matching the 155.1cc VVA engine dynamics, with automatic fuel overrun cut-off recognition during engine braking.
+* **Fuel Tank Capacity & Remaining Range**:
+  * Tracks remaining fuel in the 10.0 Litre tank in Litres and percentage.
+  * Real-time estimated range based on dynamic average mileage.
+  * Low-fuel reserve alert (< 2.0 L remaining).
+  * One-tap "⛽ Log Full Tank (10.0 L)" quick reset button for refuels.
+
 ### ⏱️ Zero-Click Automatic Ride Tracking & GPX Export
 * **Completely Hands-Free**: Starts logging automatically the instant the phone connects to your bike's CCU over BLE.
 * **Synchronized Telemetry**: Records GPS track points every second paired with motorcycle CAN telemetry:
