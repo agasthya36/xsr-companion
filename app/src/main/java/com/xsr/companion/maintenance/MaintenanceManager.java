@@ -129,18 +129,10 @@ public class MaintenanceManager {
      */
     private void baselineIfNeeded(double odoKm) {
         if (settings.isMaintenanceBaselined() || odoKm <= 0) return;
-        SharedPreferences.Editor editor = prefs.edit();
-        for (ServiceItem item : items) {
-            String key = KEY_LAST_PREFIX + item.id;
-            // A stored 0 means "unknown" — a service logged before the first
-            // odometer sync must not make every item look overdue. The very
-            // first real service after syncing will overwrite this origin.
-            if (!prefs.contains(key) || prefs.getFloat(key, 0.0f) <= 0.0f) {
-                item.lastServiceOdoKm = odoKm;
-                editor.putFloat(key, (float) odoKm);
-            }
-        }
-        editor.apply();
+        // Do NOT baseline automatically. On a new bike that falsely marks
+        // everything as done at 263 km. Never-serviced items stay at
+        // lastServiceOdo = 0 / time = 0 and show "never serviced" until
+        // the rider logs a real service or taps Reset counters to 0.
         settings.setMaintenanceBaselined();
     }
 
@@ -178,6 +170,27 @@ public class MaintenanceManager {
         Map<String, ServiceItem> map = new LinkedHashMap<>();
         for (ServiceItem item : getItems()) map.put(item.id, item);
         return map;
+    }
+
+    /**
+     * Sets every item to never-serviced (last = 0/0) and clears the
+     * odometer, for a new motorcycle. The next BLE odometer sync will
+     * repopulate the display, but all items stay "never serviced".
+     */
+    public synchronized void clearAllToNever() {
+        SharedPreferences.Editor editor = prefs.edit();
+        for (ServiceItem item : items) {
+            item.lastServiceOdoKm = 0.0;
+            item.lastServiceTime = 0L;
+            editor.putFloat(KEY_LAST_PREFIX + item.id, 0.0f);
+            editor.putLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
+        }
+        editor.putFloat(KEY_CURRENT_ODO, 0.0f);
+        editor.apply();
+        currentOdometerKm = 0.0;
+        settings.clearMaintenanceBaselined();
+        db.insertServiceLog("reset", System.currentTimeMillis(), 0.0,
+                "All services cleared to never serviced", 0.0);
     }
 
     /**

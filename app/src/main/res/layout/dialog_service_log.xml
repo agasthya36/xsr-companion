@@ -28,7 +28,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:hint="Notes (optional)"
+        android:hint="Note / justification (required)"
         app:boxCornerRadiusBottomEnd="14dp"
         app:boxCornerRadiusBottomStart="14dp"
         app:boxCornerRadiusTopEnd="14dp"

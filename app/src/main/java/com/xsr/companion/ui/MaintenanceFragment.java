@@ -63,6 +63,9 @@ public class MaintenanceFragment extends BaseFragment {
         view.findViewById(R.id.btnServiceHistory).setOnClickListener(v ->
                 new ServiceHistoryDialogFragment().show(getParentFragmentManager(), "service_history"));
 
+        com.google.android.material.button.MaterialButton reset = view.findViewById(R.id.btnResetCounters);
+        if (reset != null) reset.setOnClickListener(v -> showResetCountersDialog());
+
         buildRows();
         refresh();
     }
@@ -141,11 +144,12 @@ public class MaintenanceFragment extends BaseFragment {
             row.progress.setProgressCompat(percent, true);
         }
 
-        if (item.lastServiceTime <= 0 && !settings.isMaintenanceBaselined()) {
-            row.status.setText("NEW");
+        if (item.lastServiceTime <= 0) {
+            row.status.setText("NEVER");
             row.status.setTextColor(0xFF4D8DFF);
             row.progress.setIndicatorColor(0xFF4D8DFF);
-            row.remaining.setText(Units.shortDistance(settings, remaining) + " remaining • never serviced");
+            row.remaining.setText(Units.shortDistance(settings, item.intervalKm)
+                    + " remaining • last done: never");
             return;
         }
 
@@ -183,43 +187,46 @@ public class MaintenanceFragment extends BaseFragment {
         EditText notes = content.findViewById(R.id.inputServiceNotes);
         EditText cost = content.findViewById(R.id.inputServiceCost);
 
-        new MaterialAlertDialogBuilder(requireContext())
+        final android.content.DialogInterface[] holder = new android.content.DialogInterface[1];
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("Log this service?")
-                .setMessage("This resets the " + item.title.toLowerCase(Locale.getDefault())
-                        + " interval to 0 at " + Units.distance(settings, serviceOdo) + ". "
-                        + "Add a note and justification, then confirm.")
+                .setMessage("This records that you actually did "
+                        + item.title.toLowerCase(Locale.getDefault())
+                        + " at " + Units.distance(settings, serviceOdo) + ". "
+                        + "Add a note and justification.")
                 .setView(content)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.action_save, (dialog, which) -> {
-                    String noteText = notes.getText().toString().trim();
-                    String justification = noteText;
-                    if (justification.isEmpty()) {
-                        Toast.makeText(requireContext(),
-                                "Add a note explaining why this service was done",
-                                Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    double costValue = parseDouble(cost.getText().toString());
-                    maintenance.markServiced(id, serviceOdo, noteText, costValue);
-                    Toast.makeText(requireContext(), "Service logged", Toast.LENGTH_SHORT).show();
-                    refresh();
-                })
+                .setPositiveButton(R.string.action_save, null)
                 .show();
+        holder[0] = dialog;
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String noteText = notes.getText().toString().trim();
+            if (noteText.isEmpty()) {
+                Toast.makeText(requireContext(),
+                        "Add a note explaining why this service was done — cannot save empty",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            double costValue = parseDouble(cost.getText().toString());
+            maintenance.markServiced(id, serviceOdo, noteText, costValue);
+            Toast.makeText(requireContext(), "Service logged", Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+            refresh();
+        });
     }
 
     private void showResetCountersDialog() {
         double odo = currentOdometer();
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("Reset all service counters?")
-                .setMessage("Sets every item's last service to the current odometer "
-                        + Units.distance(settings, odo) + " "
-                        + "and clears all service timestamps. "
-                        + "This is for a new motorcycle or a corrected odometer — "
-                        + "it does not erase your service history.")
+                .setTitle("Clear all services to never?")
+                .setMessage("Sets every item to last done: never and clears all "
+                        + "service history counters. This is for a new motorcycle "
+                        + "(no services done yet). The odometer will refresh "
+                        + "from the bike on next ride.")
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton("Reset to 0", (dialog, which) -> {
-                    maintenance.resetAllToZero();
-                    Toast.makeText(requireContext(), "Service counters reset", Toast.LENGTH_SHORT).show();
+                .setPositiveButton("Clear to never", (dialog, which) -> {
+                    maintenance.clearAllToNever();
+                    Toast.makeText(requireContext(), "All services set to never", Toast.LENGTH_SHORT).show();
                     refresh();
                 })
                 .show();
