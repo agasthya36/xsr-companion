@@ -1,6 +1,8 @@
 package com.xsr.companion.ui;
 
+import android.content.Context;
 import android.content.res.ColorStateList;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -182,7 +184,9 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
             tvRideDistance.setText(Units.distance(settings, 0));
             tvRideDuration.setText("0:00");
             tvRideMileage.setText(Units.mileage(settings, instantMileage));
-            tvRideFuel.setText("Recording starts automatically when you ride");
+            tvRideFuel.setText(isLocationEnabled()
+                    ? "Recording starts automatically when you ride"
+                    : "Location is off — rides won't include GPS or a map route");
         }
 
         double fuel = XsrBleService.sFuelRemainingL;
@@ -259,6 +263,12 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
             tvDueCount.setText("All good");
             tvDueCount.setTextColor(0xFF34D399);
         }
+    }
+
+    private boolean isLocationEnabled() {
+        LocationManager lm = (LocationManager) requireContext()
+                .getSystemService(Context.LOCATION_SERVICE);
+        return lm != null && lm.isLocationEnabled();
     }
 
     private static String formatDuration(long millis) {

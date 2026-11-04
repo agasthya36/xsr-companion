@@ -478,8 +478,37 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     }
 
     public RideSummary getRide(long rideId) {
-        List<RideSummary> list = queryRides(COL_ID + "=?", null, String.valueOf(rideId));
-        return list.isEmpty() ? null : list.get(0);
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_RIDES, null, COL_ID + "=?",
+                new String[]{String.valueOf(rideId)}, null, null, null, "1");
+        RideSummary summary = null;
+        if (c != null) {
+            if (c.moveToFirst()) summary = readSummary(c);
+            c.close();
+        }
+        return summary;
+    }
+
+    private RideSummary readSummary(Cursor c) {
+        RideSummary s = new RideSummary();
+        s.id = c.getLong(c.getColumnIndexOrThrow(COL_ID));
+        s.startTime = c.getLong(c.getColumnIndexOrThrow(COL_START_TIME));
+        s.endTime = c.getLong(c.getColumnIndexOrThrow(COL_END_TIME));
+        s.durationSec = c.getInt(c.getColumnIndexOrThrow(COL_DURATION_SEC));
+        s.movingSec = c.getInt(c.getColumnIndexOrThrow(COL_MOVING_SEC));
+        s.distanceKm = c.getDouble(c.getColumnIndexOrThrow(COL_DISTANCE_KM));
+        s.topSpeedKmh = c.getInt(c.getColumnIndexOrThrow(COL_TOP_SPEED));
+        s.avgSpeedKmh = c.getDouble(c.getColumnIndexOrThrow(COL_AVG_SPEED));
+        s.maxRpm = c.getInt(c.getColumnIndexOrThrow(COL_MAX_RPM));
+        s.avgRpm = c.getInt(c.getColumnIndexOrThrow(COL_AVG_RPM));
+        s.maxCoolant = c.getInt(c.getColumnIndexOrThrow(COL_MAX_COOLANT));
+        s.startOdoKm = c.getDouble(c.getColumnIndexOrThrow(COL_START_ODO));
+        s.endOdoKm = c.getDouble(c.getColumnIndexOrThrow(COL_END_ODO));
+        s.fuelUsedL = c.getDouble(c.getColumnIndexOrThrow(COL_FUEL_USED));
+        s.avgMileageKmL = c.getDouble(c.getColumnIndexOrThrow(COL_AVG_MILEAGE));
+        s.gpxPath = c.getString(c.getColumnIndexOrThrow(COL_GPX_PATH));
+        s.notes = c.getString(c.getColumnIndexOrThrow(COL_NOTES));
+        return s;
     }
 
     private List<RideSummary> queryRides(String where, String order, String limit) {
@@ -488,25 +517,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         Cursor c = db.query(TABLE_RIDES, null, where, null, null, null, order, limit);
         if (c != null) {
             while (c.moveToNext()) {
-                RideSummary s = new RideSummary();
-                s.id = c.getLong(c.getColumnIndexOrThrow(COL_ID));
-                s.startTime = c.getLong(c.getColumnIndexOrThrow(COL_START_TIME));
-                s.endTime = c.getLong(c.getColumnIndexOrThrow(COL_END_TIME));
-                s.durationSec = c.getInt(c.getColumnIndexOrThrow(COL_DURATION_SEC));
-                s.movingSec = c.getInt(c.getColumnIndexOrThrow(COL_MOVING_SEC));
-                s.distanceKm = c.getDouble(c.getColumnIndexOrThrow(COL_DISTANCE_KM));
-                s.topSpeedKmh = c.getInt(c.getColumnIndexOrThrow(COL_TOP_SPEED));
-                s.avgSpeedKmh = c.getDouble(c.getColumnIndexOrThrow(COL_AVG_SPEED));
-                s.maxRpm = c.getInt(c.getColumnIndexOrThrow(COL_MAX_RPM));
-                s.avgRpm = c.getInt(c.getColumnIndexOrThrow(COL_AVG_RPM));
-                s.maxCoolant = c.getInt(c.getColumnIndexOrThrow(COL_MAX_COOLANT));
-                s.startOdoKm = c.getDouble(c.getColumnIndexOrThrow(COL_START_ODO));
-                s.endOdoKm = c.getDouble(c.getColumnIndexOrThrow(COL_END_ODO));
-                s.fuelUsedL = c.getDouble(c.getColumnIndexOrThrow(COL_FUEL_USED));
-                s.avgMileageKmL = c.getDouble(c.getColumnIndexOrThrow(COL_AVG_MILEAGE));
-                s.gpxPath = c.getString(c.getColumnIndexOrThrow(COL_GPX_PATH));
-                s.notes = c.getString(c.getColumnIndexOrThrow(COL_NOTES));
-                list.add(s);
+                list.add(readSummary(c));
             }
             c.close();
         }

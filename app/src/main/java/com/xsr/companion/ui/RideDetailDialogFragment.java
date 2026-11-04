@@ -1,6 +1,7 @@
 package com.xsr.companion.ui;
 
 import android.app.Dialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
@@ -38,6 +39,7 @@ public class RideDetailDialogFragment extends DialogFragment {
     private SettingsManager settings;
     private RideDatabaseHelper db;
     private RideDatabaseHelper.RideSummary ride;
+    private boolean hasGpsPoints;
 
     public static RideDetailDialogFragment newInstance(long rideId) {
         RideDetailDialogFragment f = new RideDetailDialogFragment();
@@ -64,6 +66,7 @@ public class RideDetailDialogFragment extends DialogFragment {
 
         View share = view.findViewById(R.id.btnShareRide);
         share.setOnClickListener(v -> shareRide());
+        view.findViewById(R.id.btnViewRoute).setOnClickListener(v -> openRouteMap());
         view.findViewById(R.id.btnDeleteRide).setOnClickListener(v -> confirmDelete());
 
         io.execute(() -> {
@@ -78,6 +81,19 @@ public class RideDetailDialogFragment extends DialogFragment {
                         List<RideDatabaseHelper.RidePoint> points) {
         if (!isAdded() || summary == null) return;
         ride = summary;
+
+        hasGpsPoints = false;
+        if (points != null) {
+            for (RideDatabaseHelper.RidePoint p : points) {
+                if (p.hasGps) {
+                    hasGpsPoints = true;
+                    break;
+                }
+            }
+        }
+        View routeButton = view.findViewById(R.id.btnViewRoute);
+        routeButton.setEnabled(hasGpsPoints);
+        routeButton.setAlpha(hasGpsPoints ? 1f : 0.5f);
 
         ((TextView) view.findViewById(R.id.tvDetailDate)).setText(summary.getFormattedDate());
         ((TextView) view.findViewById(R.id.tvDetailSubtitle)).setText(
@@ -146,6 +162,17 @@ public class RideDetailDialogFragment extends DialogFragment {
         }
         ExportUtils.shareFile(requireContext(), file, "application/gpx+xml",
                 "Yamaha XSR 155 — " + ride.getFormattedDate());
+    }
+
+    private void openRouteMap() {
+        if (ride == null) return;
+        if (!hasGpsPoints) {
+            Toast.makeText(requireContext(), R.string.map_no_route, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent intent = new Intent(requireContext(), RideMapActivity.class);
+        intent.putExtra(RideMapActivity.EXTRA_RIDE_ID, ride.id);
+        startActivity(intent);
     }
 
     private void confirmDelete() {

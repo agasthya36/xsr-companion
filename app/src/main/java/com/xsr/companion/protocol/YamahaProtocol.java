@@ -371,4 +371,33 @@ public final class YamahaProtocol {
         }
         return null;
     }
+
+    // The CCU QR sticker encodes a scrambled 24-character payload. Position i
+    // of the raw payload belongs at this index of the decoded string. The
+    // decoded string is: 14-char CCU ID + 6-char passkey + 4-char suffix.
+    private static final int[] CCU_QR_ORDER = {
+            3, 11, 8, 19, 22, 17, 6, 0, 14, 20, 10, 23,
+            4, 9, 1, 18, 12, 5, 21, 13, 2, 15, 7, 16
+    };
+
+    /**
+     * De-scrambles the 24-character payload printed as the CCU pairing QR
+     * code and returns its 6-character passkey. Returns null when the payload
+     * or the embedded CCU ID does not match.
+     */
+    public static String decodeCcuQrPasskey(String qrPayload, String expectedCcuId) {
+        if (qrPayload == null) return null;
+        String qr = qrPayload.trim();
+        if (qr.length() != CCU_QR_ORDER.length) return null;
+        char[] decoded = new char[CCU_QR_ORDER.length];
+        for (int i = 0; i < CCU_QR_ORDER.length; i++) {
+            decoded[CCU_QR_ORDER[i]] = qr.charAt(i);
+        }
+        String result = new String(decoded);
+        String expected = cleanCcuId(expectedCcuId);
+        if (expected != null && !expected.isEmpty() && !result.startsWith(expected)) {
+            return null;
+        }
+        return result.substring(14, 20);
+    }
 }

@@ -2,8 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-        Deliberately no INTERNET permission: the app is 100% offline and
-        nothing leaves the phone unless the rider explicitly exports it.
+        Network access exists only for Google Maps map tiles in the ride route
+        viewer. The companion logic itself never uploads telemetry or account
+        data; exports still leave the phone only when the rider shares them.
     -->
 
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
@@ -15,6 +16,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <uses-feature
         android:name="android.hardware.bluetooth_le"
@@ -30,6 +33,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.XsrCompanion"
         android:usesCleartextTraffic="false">
+
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
+        <activity
+            android:name=".ui.RideMapActivity"
+            android:exported="false"
+            android:theme="@style/Theme.XsrCompanion" />
 
         <activity
             android:name=".ui.MainActivity"

@@ -10,6 +10,15 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
 
+def localPropertiesFile = rootProject.file('local.properties')
+def localProperties = new Properties()
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def mapsApiKey = localProperties.getProperty('MAPS_API_KEY')
+        ?: System.getenv('MAPS_API_KEY')
+        ?: ''
+
 android {
     namespace 'com.xsr.companion'
     compileSdk 37
@@ -18,9 +27,11 @@ android {
         applicationId 'com.xsr.companion'
         minSdk 37
         targetSdk 37
-        versionCode 2
-        versionName '2.0'
+        versionCode 3
+        versionName '2.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
+        buildConfigField "String", "MAPS_API_KEY", "\"${mapsApiKey}\""
     }
 
     signingConfigs {
@@ -68,6 +79,7 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
     implementation 'androidx.core:core-splashscreen:1.2.0'
+    implementation 'com.google.android.gms:play-services-maps:20.1.0'
 
     testImplementation 'junit:junit:4.13.2'
 }

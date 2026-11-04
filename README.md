@@ -1,8 +1,21 @@
 # Yamaha XSR 155 Companion
 
-A 100% offline, privacy-first Android companion for the **Yamaha XSR 155** (and compatible **MT-15**, **YZF-R15 V3/V4**, and other Yamaha models using the `SCCU1_ICE` / Y-Connect CCU).
+A privacy-first Android companion for the **Yamaha XSR 155** (and compatible **MT-15**, **YZF-R15 V3/V4**, and other Yamaha models using the `SCCU1_ICE` / Y-Connect CCU).
 
-Version 2.0 is a full Material 3 rewrite: five focused screens, automatic ride recording, fuel and service tracking, DTC diagnostics, and aggressive battery optimisation. There is no INTERNET permission, no account, no analytics, and no telemetry upload.
+Version 2.1 is a full Material 3 rewrite with five focused screens, automatic ride recording, fuel and service tracking, DTC diagnostics, GPX export, and an optional Google Maps ride-route viewer. There is no account, no analytics, and no telemetry upload; network access is used only for map tiles.
+
+---
+
+## What's new in 2.1
+
+### Ride route map
+- **View route on map** on any recorded ride, drawn from the locally stored GPS points.
+- Google Maps tiles, start/finish markers, automatic camera fit, and a dark map style.
+- Requires a Google Maps API key (see below). Map SDK usage is free for Android; only tiles are fetched over the network.
+- Rides without GPS points disable the button instead of opening an empty map.
+
+### Link stability
+- Clock/battery sync (`0x058A`) and notification flags (`0x058B`) are now sent **once per second**, matching the official app. The CCU drops the link about 15 s after authentication if `0x058A` stops arriving.
 
 ---
 
@@ -24,7 +37,7 @@ Version 2.0 is a full Material 3 rewrite: five focused screens, automatic ride r
 - No per-packet broadcasts or database writes. Ride points are written only while moving.
 
 ### Privacy / release hardening
-- No `INTERNET` permission.
+- Network access is limited to Google Maps tiles in the ride route viewer.
 - `android:allowBackup="false"` and no cleartext traffic.
 - File provider is non-exported with canonical-path validation.
 - Release builds use R8 + resource shrinking and optional signing via `keystore.properties`.
@@ -38,6 +51,7 @@ Version 2.0 is a full Material 3 rewrite: five focused screens, automatic ride r
 - Records wheel speed, RPM, throttle, coolant, and GPS every 2 s.
 - Discards stationary sessions under 50 m / 5 km/h so the garage never fills with empty rides.
 - Standard GPX 1.1 export with Garmin TrackPoint extensions, plus CSV export of rides, fuel, and service history.
+- Ride route on Google Maps with start/finish markers, drawn from the recorded GPS points.
 - Ride-recap notification and per-ride charts (no charting library).
 
 ### Fuel
@@ -68,14 +82,14 @@ Version 2.0 is a full Material 3 rewrite: five focused screens, automatic ride r
 ## Privacy guarantee
 
 ```
-No INTERNET permission.
 No analytics.
 No trackers.
 No cloud accounts.
 No telemetry uploads.
+Network access only for Google Maps tiles.
 ```
 
-The manifest deliberately omits `android.permission.INTERNET`. All rides, GPS points, fuel entries, service records, and diagnostic logs stay in the app's private storage. Data leaves the phone only when you explicitly share or export it.
+All rides, GPS points, fuel entries, service records, and diagnostic logs stay in the app's private storage. The only network traffic the app can generate is Google Maps map-tile requests while a ride route is open. Data leaves the phone otherwise only when you explicitly share or export it.
 
 ---
 
@@ -103,6 +117,28 @@ Run unit tests:
 ```bash
 ./gradlew :app:testDebugUnitTest
 ```
+
+### Google Maps API key
+
+The ride-route viewer uses the **Maps SDK for Android**. Create a key once in
+[Google Cloud Console](https://console.cloud.google.com/):
+
+1. Create or select a project, enable **Maps SDK for Android**, and enable billing
+   (Google requires a billing account even though Android map loads use the
+   unlimited no-cost Maps SDK SKU).
+2. Create an API key and add an **Android app restriction**:
+   - package `com.xsr.companion`, release SHA-1
+     `9E:EC:16:74:BA:22:17:1B:C6:04:BF:F0:F4:29:13:26:85:34:80:C3`
+   - package `com.xsr.companion.debug`, debug SHA-1
+     `06:2F:96:39:58:E1:9E:E8:AC:44:67:BA:4B:72:FF:4F:35:A4:86:E6`
+3. Put the key in `local.properties` (already git-ignored):
+
+```properties
+MAPS_API_KEY=AIza...
+```
+
+If the key is missing the app still builds and runs; opening a route shows a
+clear "add MAPS_API_KEY" message instead of a blank map.
 
 ### Signed release
 

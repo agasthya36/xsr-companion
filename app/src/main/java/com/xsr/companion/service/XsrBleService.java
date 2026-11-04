@@ -157,6 +157,9 @@ public class XsrBleService extends Service {
     private int authCandidateIndex = 0;
     private final List<AuthCandidate> authCandidates = new ArrayList<>();
     private int connectRetries = 0;
+    private boolean connectInFlight = false;
+    private String connectInFlightAddress = null;
+    private boolean skipBondedOnNextScan = false;
 
     private static class AuthCandidate {
         final String passkey;
@@ -339,9 +342,13 @@ public class XsrBleService extends Service {
             // started; re-register the call-state listener exactly once.
             unregisterTelephony();
             registerTelephonyIfAllowed();
-        } else if (intent == null || action == null) {
-            // Process restart. Try the known MAC directly; scanning in the
-            // background is deliberately avoided to save battery.
+        } else if (intent == null) {
+            // Real process restart (START_STICKY). Try the known MAC directly;
+            // scanning in the background is deliberately avoided to save
+            // battery. A no-action start (used only to spin up the foreground
+            // service) must NOT connect here: the activity follows it with an
+            // explicit ACTION_START_SCAN, and connecting twice in a row
+            // cancels the first attempt and makes the second time out.
             String savedMac = prefs.getString(PREF_LAST_MAC, "");
             if (settings.isAutoConnect() && hasBluetoothPermission() && savedMac != null && !savedMac.isEmpty()) {
                 connectToMac(savedMac);
@@ -592,8 +599,11 @@ public class XsrBleService extends Service {
         }
         if (isScanning) return;
 
-        // Prefer an already-bonded CCU: zero scanning cost.
-        if (connectToBondedIfPresent()) return;
+        // Prefer an already-bonded CCU: zero scanning cost. Skip it after a
+        // direct-connect timeout, so a rotated CCU address can be rediscovered
+        // by an actual scan instead of retrying a stale MAC forever.
+        if (!skipBondedOnNextScan && connectToBondedIfPresent()) return;
+        skipBondedOnNextScan = false;
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
             broadcastStatus("Bluetooth is off");
@@ -723,7 +733,23 @@ public class XsrBleService extends Service {
     }
 
     private void connectToDevice(BluetoothDevice device) {
+        if (device == null) return;
+        String address = device.getAddress();
+
+        // Never start a second connection while one is still opening. The
+        // previous code closed the first GATT and immediately reconnected,
+        // which the controller often answers with a connection timeout.
+        if (connectInFlight && address != null
+                && address.equalsIgnoreCase(connectInFlightAddress)) {
+            AppLogManager.getInstance().log(TAG,
+                    "Connect already in progress; ignoring duplicate request");
+            return;
+        }
+
         closeGatt();
+        connectInFlight = true;
+        connectInFlightAddress = address;
+
         String name;
         try { name = device.getName(); } catch (Exception e) { name = null; }
         if (name == null) name = currentDeviceName;
@@ -735,7 +761,16 @@ public class XsrBleService extends Service {
                 .putString(PREF_LAST_NAME, name)
                 .apply();
 
-        bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+        try {
+            bluetoothGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+        } catch (Exception e) {
+            bluetoothGatt = null;
+        }
+        if (bluetoothGatt == null) {
+            connectInFlight = false;
+            connectInFlightAddress = null;
+            broadcastStatus("Could not start the Bluetooth connection");
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -745,11 +780,23 @@ public class XsrBleService extends Service {
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            // Ignore callbacks from a GATT instance we already abandoned.
+            // Otherwise a late DISCONNECTED from the old attempt calls
+            // closeGatt() and tears down the new, healthy connection.
+            if (gatt != bluetoothGatt) {
+                try { gatt.close(); } catch (Exception ignored) {}
+                return;
+            }
+            connectInFlight = false;
+            connectInFlightAddress = null;
+
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 isConnected = true;
                 sIsConnected = true;
                 handshakeComplete = false;
                 sessionActive = false;
+                authCandidates.clear();
+                authCandidateIndex = 0;
                 connectRetries = 0;
                 packetCount = 0;
                 sPacketCount = 0;
@@ -779,6 +826,19 @@ public class XsrBleService extends Service {
                 finishRide();
                 saveParkedLocation();
                 closeGatt();
+
+                // 147 = GATT_CONNECTION_TIMEOUT: the CCU did not answer the
+                // direct connect. Rescan instead of blindly retrying the saved
+                // MAC, because the CCU can advertise from a rotated address.
+                if (status == 147 && !userDisconnect && connectRetries < 1) {
+                    connectRetries++;
+                    broadcastStatus("Connection timed out. Scanning again…");
+                    skipBondedOnNextScan = true;
+                    mainHandler.postDelayed(() -> {
+                        if (!isConnected && !isScanning) startScan();
+                    }, 1500);
+                    return;
+                }
 
                 if (status == 133 && !userDisconnect && connectRetries < 2) {
                     connectRetries++;
@@ -831,7 +891,22 @@ public class XsrBleService extends Service {
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 broadcastStatus("Negotiating connection…");
-                gatt.requestMtu(247);
+                boolean requested = false;
+                try { requested = gatt.requestMtu(247); } catch (Exception ignored) {}
+                if (!requested) {
+                    mainHandler.post(() -> beginAuthentication(gatt));
+                } else {
+                    // If the CCU never answers the MTU request, authenticate
+                    // anyway rather than leaving the session unauthenticated.
+                    mainHandler.postDelayed(() -> {
+                        if (bluetoothGatt == gatt && isConnected && !handshakeComplete
+                                && !sessionActive && authCandidateIndex == 0) {
+                            AppLogManager.getInstance().log(TAG,
+                                    "MTU callback missing; authenticating anyway");
+                            beginAuthentication(gatt);
+                        }
+                    }, 4000);
+                }
             } else {
                 broadcastStatus("Notification setup failed (" + status + ")");
             }
@@ -839,30 +914,9 @@ public class XsrBleService extends Service {
 
         @Override
         public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-            BluetoothDevice dev = gatt.getDevice();
-            int bondState = dev != null ? dev.getBondState() : BluetoothDevice.BOND_NONE;
-
-            if (bondState == BluetoothDevice.BOND_BONDED) {
-                AppLogManager.getInstance().log(TAG, "CCU already bonded; starting session directly");
-                startSession();
-                return;
-            }
-
-            // Unbonded: try the user PIN (or CCU ID) once, then the alternate
-            // bonding flag. Never brute-force a long list of PINs; the CCU can
-            // lock out after repeated failures.
-            handshakeComplete = false;
-            authCandidates.clear();
-            authCandidateIndex = 0;
-            prepareAuthCandidates(cleanCcuIdForDevice(dev));
-            broadcastStatus("Pairing with CCU…");
-            trySendNextAuth();
-
-            mainHandler.postDelayed(() -> {
-                if (isConnected && !handshakeComplete && !sessionActive) {
-                    broadcastStatus("Enter your CCU PIN / VIN to finish pairing");
-                }
-            }, 5000);
+            AppLogManager.getInstance().log(TAG,
+                    "MTU " + mtu + " (status " + status + "); starting authentication");
+            beginAuthentication(gatt);
         }
 
         @Override
@@ -882,7 +936,48 @@ public class XsrBleService extends Service {
         return YamahaProtocol.cleanCcuId(name != null ? name : currentDeviceName);
     }
 
-    private void prepareAuthCandidates(String ccuId) {
+    private void beginAuthentication(BluetoothGatt gatt) {
+        if (gatt == null || gatt != bluetoothGatt || !isConnected) return;
+        if (handshakeComplete || sessionActive) return;
+
+        BluetoothDevice dev = gatt.getDevice();
+        int bondState = dev != null ? dev.getBondState() : BluetoothDevice.BOND_NONE;
+        boolean bonded = bondState == BluetoothDevice.BOND_BONDED;
+
+        if (authCandidateIndex > 0) {
+            AppLogManager.getInstance().log(TAG,
+                    "Authentication already in progress; ignoring repeated MTU update");
+            return;
+        }
+
+        prepareAuthCandidates(cleanCcuIdForDevice(dev), bonded);
+        AppLogManager.getInstance().log(TAG,
+                "Authenticating with CCU (bonded=" + bonded + ", attempts=" + authCandidates.size() + ")");
+        broadcastStatus(bonded ? "Authenticating with CCU…" : "Pairing with CCU…");
+        trySendNextAuth();
+
+        mainHandler.postDelayed(() -> {
+            if (isConnected && !handshakeComplete && !sessionActive) {
+                broadcastStatus("CCU PIN required. Tap the bike name to enter it.");
+            }
+        }, 5000);
+    }
+
+    /**
+     * Re-sends 0x7F00 after the user edits the passkey, without dropping the
+     * BLE link. No-op once a session is already authenticated.
+     */
+    public void retryAuthentication() {
+        if (bluetoothGatt == null || !isConnected || sessionActive) return;
+        handshakeComplete = false;
+        authCandidates.clear();
+        authCandidateIndex = 0;
+        AppLogManager.getInstance().log(TAG,
+                "Retrying authentication with the updated passkey");
+        beginAuthentication(bluetoothGatt);
+    }
+
+    private void prepareAuthCandidates(String ccuId, boolean bonded) {
         authCandidates.clear();
         authCandidateIndex = 0;
 
@@ -890,15 +985,34 @@ public class XsrBleService extends Service {
         String last6Ccu = ccuId.length() >= 6
                 ? ccuId.substring(ccuId.length() - 6) : "826927";
 
+        String candidate;
         if (!userPass.isEmpty()) {
-            String candidate = userPass.length() > 6
-                    ? userPass.substring(userPass.length() - 6) : userPass;
-            authCandidates.add(new AuthCandidate(candidate, true));
-            authCandidates.add(new AuthCandidate(candidate, false));
+            if (userPass.length() == 24) {
+                String decoded = YamahaProtocol.decodeCcuQrPasskey(userPass, ccuId);
+                if (decoded != null) {
+                    candidate = decoded;
+                    // Replace the raw QR payload with the actual passkey so
+                    // later reconnects do not need to re-decode it.
+                    prefs.edit().putString(PREF_PASSKEY, decoded).apply();
+                } else {
+                    AppLogManager.getInstance().log(TAG,
+                            "CCU QR payload did not match this CCU ID; falling back");
+                    candidate = last6Ccu;
+                }
+            } else {
+                candidate = userPass.length() > 6
+                        ? userPass.substring(userPass.length() - 6) : userPass;
+            }
         } else {
-            authCandidates.add(new AuthCandidate(last6Ccu, true));
-            authCandidates.add(new AuthCandidate(last6Ccu, false));
+            candidate = last6Ccu;
         }
+
+        // 0x7F00 is required on every session. When the phone is already
+        // bonded, the CCU expects updateBondingFlag=0; on first pairing it
+        // expects 1. Try the matching flag first, then the alternate once.
+        // Never brute-force a list of PINs: the CCU can lock out.
+        authCandidates.add(new AuthCandidate(candidate, !bonded));
+        authCandidates.add(new AuthCandidate(candidate, bonded));
     }
 
     private void trySendNextAuth() {
@@ -933,8 +1047,12 @@ public class XsrBleService extends Service {
                 }
                 startSession();
             } else if (authCandidateIndex < authCandidates.size()) {
+                AppLogManager.getInstance().log(TAG,
+                        "CCU rejected auth attempt; trying the alternate bonding flag");
                 mainHandler.postDelayed(this::trySendNextAuth, 250);
             } else {
+                AppLogManager.getInstance().log(TAG,
+                        "CCU rejected all auth candidates; a PIN/VIN is required");
                 broadcastStatus("CCU PIN required. Tap the bike name to enter it.");
             }
             return;
@@ -1365,15 +1483,14 @@ public class XsrBleService extends Service {
             public void run() {
                 if (isConnected && bluetoothGatt != null && rxCharacteristic != null) {
                     long now = System.currentTimeMillis();
-                    if (now - lastClockSyncMs >= 60_000L) {
-                        sendClockAndBatterySync();
-                        lastClockSyncMs = now;
-                    }
-                    if (isIncomingCall && now - lastNotificationSyncMs >= 2_000L) {
-                        sendNotificationSync();
-                        lastNotificationSyncMs = now;
-                    }
-                    mainHandler.postDelayed(this, 5_000L);
+                    // The CCU drops the link roughly 15 s after authentication if
+                    // 0x058A stops arriving. The official app sends 0x058A and
+                    // 0x058B once per second, so mirror that cadence here.
+                    sendClockAndBatterySync();
+                    lastClockSyncMs = now;
+                    sendNotificationSync();
+                    lastNotificationSyncMs = now;
+                    mainHandler.postDelayed(this, 1_000L);
                 }
             }
         };
@@ -1514,6 +1631,10 @@ public class XsrBleService extends Service {
         rxCharacteristic = null;
         isConnected = false;
         sIsConnected = false;
+        connectInFlight = false;
+        connectInFlightAddress = null;
+        authCandidates.clear();
+        authCandidateIndex = 0;
     }
 
     private void disconnectGatt(boolean finalizeRide) {
@@ -1529,6 +1650,8 @@ public class XsrBleService extends Service {
         sSessionActive = false;
         authCandidates.clear();
         authCandidateIndex = 0;
+        connectRetries = 0;
+        skipBondedOnNextScan = false;
         closeGatt();
         packetCount = 0;
         sPacketCount = 0;

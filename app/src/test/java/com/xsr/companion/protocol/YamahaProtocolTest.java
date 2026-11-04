@@ -110,4 +110,21 @@ public class YamahaProtocolTest {
         assertEquals(99.9, YamahaProtocol.calculateInstantMileageKmL(40, 2.0, 0.0), 1e-9);
         assertEquals(40.0, YamahaProtocol.calculateInstantMileageKmL(60, 1.5, 30), 0.001);
     }
+
+    @Test
+    public void decodesCcuQrPayloadToPasskey() {
+        // Raw scrambled payload, and the decoded layout it represents:
+        // 00000005826927 (CCU ID) + 123456 (passkey) + WXYZ (suffix).
+        String raw = "0986Y4001W6Z020520X70253";
+        assertEquals("123456", YamahaProtocol.decodeCcuQrPasskey(raw, "00000005826927"));
+        assertEquals("123456", YamahaProtocol.decodeCcuQrPasskey(raw, "YSCCU_00000005826927"));
+    }
+
+    @Test
+    public void rejectsCcuQrPayloadForAnotherCcu() {
+        String raw = "0986Y4001W6Z020520X70253";
+        assertEquals(null, YamahaProtocol.decodeCcuQrPasskey(raw, "00000005999999"));
+        assertEquals(null, YamahaProtocol.decodeCcuQrPasskey("too-short", "00000005826927"));
+        assertEquals(null, YamahaProtocol.decodeCcuQrPasskey(null, "00000005826927"));
+    }
 }

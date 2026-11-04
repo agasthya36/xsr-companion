@@ -274,7 +274,7 @@ public class SettingsFragment extends BaseFragment {
     private void editPasskey() {
         EditText input = new EditText(requireContext());
         input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setHint("CCU passkey / VIN");
+        input.setHint("6-digit passkey, VIN, or CCU QR payload");
         String current = servicePrefs.getString(XsrBleService.PREF_PASSKEY, "");
         input.setText(current);
         input.setSelectAllOnFocus(true);
@@ -283,8 +283,9 @@ public class SettingsFragment extends BaseFragment {
 
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("CCU passkey")
-                .setMessage("Normally learned automatically. Enter it only if pairing "
-                        + "keeps failing; an empty value restores auto-detection.")
+                .setMessage("Enter the 6-character passkey from the CCU QR sticker, "
+                        + "the full chassis/VIN number, or the 24-character QR payload. "
+                        + "Leave empty to try the CCU ID automatically.")
                 .setView(input)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.action_save, (d, w) -> {
@@ -292,6 +293,8 @@ public class SettingsFragment extends BaseFragment {
                             .putString(XsrBleService.PREF_PASSKEY,
                                     input.getText().toString().trim())
                             .apply();
+                    XsrBleService service = service();
+                    if (service != null) service.retryAuthentication();
                     updateConnectionState();
                 })
                 .show();

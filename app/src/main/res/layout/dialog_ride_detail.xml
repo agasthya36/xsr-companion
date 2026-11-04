@@ -35,6 +35,16 @@
                 android:text="--"
                 android:textAppearance="@style/TextAppearance.Xsr.Caption" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewRoute"
+                style="@style/Widget.Xsr.Button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/action_view_route"
+                app:icon="@drawable/ic_route"
+                app:iconSize="18dp" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
