@@ -68,6 +68,7 @@ public class RideDetailDialogFragment extends DialogFragment {
         share.setOnClickListener(v -> shareRide());
         view.findViewById(R.id.btnViewRoute).setOnClickListener(v -> openRouteMap());
         view.findViewById(R.id.btnDeleteRide).setOnClickListener(v -> confirmDelete());
+        view.findViewById(R.id.btnCloseRide).setOnClickListener(v -> dismiss());
 
         io.execute(() -> {
             RideDatabaseHelper.RideSummary summary = db.getRide(rideId);

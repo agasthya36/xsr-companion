@@ -24,6 +24,7 @@
     <string name="action_refuel">Log refuel</string>
     <string name="action_log_service">Log service</string>
     <string name="action_view_logs">Live logs</string>
+    <string name="action_close">Close</string>
     <string name="action_view_route">View route on map</string>
 
     <string name="map_ride_route">Ride route</string>
