@@ -201,3 +201,30 @@ Each item calculates `remainingKm = interval - (currentOdo - lastServiceOdo)`. B
 | **DTC Diagnostics** | Vague warning, visit dealer | **Plain-English Explanations** |
 | **Maintenance Tracker** | Cloud/dealer based | **Real Odometer-Driven** |
 | **Memory Footprint** | ~180 MB RAM | **~18 MB RAM** |
+
+---
+
+## 10. Aggregate Stats, Fuel Economy & Real-Time Mileage Dynamics
+
+### 10.1 Real-Time Speed-Density Fuel Estimation
+The Yamaha XSR 155 (and MT-15 / R15) does not broadcast a continuous float sensor fuel level over BLE. Instead, real-time mileage and fuel flow are computed using high-accuracy speed-density calculations calibrated for the 155.1cc VVA engine:
+
+$$\text{Fuel Flow Rate } (L/h) = \frac{\left(\frac{\text{RPM}}{120} \times 0.1551 \times \text{VE}(\text{throttle}) \times \rho_{\text{air}}(\text{temp}, \text{pressure})\right)}{14.7 \times 740} \times 3600$$
+
+Where:
+* **Volumetric Efficiency (VE)**: Modeled dynamically across throttle positions: $\text{VE} = 0.28 + 0.62 \times \text{Throttle}^{0.85}$ (accounting for bypass idle air and high-lift VVA cam lobe activation).
+* **Air Density ($\rho_{\text{air}}$)**: Corrected via ambient temperature (`0x02000006`) and barometric pressure (`0x02000007`).
+* **Fuel Cutoff Detection**: When coasting in-gear with throttle $< 1.0\%$ and speed $> 15\text{ km/h}$, fuel cut is triggered and instantaneous mileage peaks at $99.9\text{ km/L}$.
+* **Instantaneous Mileage**: $\text{Speed (km/h)} / \text{Fuel Rate (L/h)}$.
+
+### 10.2 Fuel Capacity & Range Tracking
+* **Factory Tank Capacity**: 10.0 Litres (Reserve: 2.0 Litres).
+* **Trip Fuel Integration**: Accumulates real-time fuel consumed each second.
+* **Remaining Litres & Percentage**: Tracked locally and updated continuously.
+* **Estimated Range**: $\text{Remaining Litres} \times \text{Average Mileage (km/L)}$.
+* **One-Tap Refuel Logging**: Resets tank capacity to 10.0L with a single tap.
+
+### 10.3 Cumulative Aggregate Metrics
+* **Total Distance Ridden**: Synchronizes motorcycle factory odometer (`0x0200000A`) and total companion-app logged mileage.
+* **Lifetime Speed Statistics**: Computes cumulative average speed across all rides ($\sum \text{distance} / \sum \text{duration}$) and lifetime top speed achieved.
+
