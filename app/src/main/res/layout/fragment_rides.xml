@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/bg_app"
     android:orientation="vertical">
 
     <LinearLayout
@@ -10,23 +11,27 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="@dimen/screen_pad"
-        android:paddingTop="20dp"
+        android:paddingTop="18dp"
         android:paddingBottom="8dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="RIDE HISTORY"
-            android:textAppearance="@style/TextAppearance.Xsr.Label"
-            android:textColor="@color/primary" />
+            android:text="RIDE LOG"
+            android:textAppearance="@style/TextAppearance.Xsr.Eyebrow" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Rides"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenTitle" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@string/rides_subtitle"
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenSubtitle" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Xsr.Card"
@@ -55,13 +60,15 @@
                             android:id="@+id/tvTotalDistance"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
                             android:text="--"
                             android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                            android:textSize="26sp" />
+                            android:textSize="28sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
                             android:text="TOTAL DISTANCE"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -76,13 +83,15 @@
                             android:id="@+id/tvRideCount"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
                             android:text="0"
                             android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                            android:textSize="26sp" />
+                            android:textSize="28sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
                             android:text="RIDES"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -91,7 +100,7 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginVertical="12dp"
+                    android:layout_marginVertical="14dp"
                     android:background="@color/outline_color" />
 
                 <LinearLayout
@@ -111,12 +120,13 @@
                             android:layout_height="wrap_content"
                             android:text="--"
                             android:textColor="@color/text_primary"
-                            android:textSize="18sp"
+                            android:textSize="17sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
                             android:text="TOP SPEED"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -133,12 +143,13 @@
                             android:layout_height="wrap_content"
                             android:text="--"
                             android:textColor="@color/text_primary"
-                            android:textSize="18sp"
+                            android:textSize="17sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
                             android:text="MOVING TIME"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -155,12 +166,13 @@
                             android:layout_height="wrap_content"
                             android:text="--"
                             android:textColor="@color/text_primary"
-                            android:textSize="18sp"
+                            android:textSize="17sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
                             android:text="MILEAGE"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -179,15 +191,43 @@
             app:iconSize="18dp" />
     </LinearLayout>
 
-    <TextView
+    <LinearLayout
         android:id="@+id/tvEmpty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
         android:gravity="center"
-        android:padding="40dp"
-        android:text="@string/empty_rides"
-        android:textAppearance="@style/TextAppearance.Xsr.Caption"
-        android:visibility="gone" />
+        android:orientation="vertical"
+        android:paddingHorizontal="36dp"
+        android:paddingVertical="24dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="148dp"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:alpha="0.55"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/xsr_wordmark" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="@string/empty_rides_title"
+            android:textColor="@color/text_primary"
+            android:textSize="19sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="@string/empty_rides"
+            android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerRides"
@@ -196,7 +236,7 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingHorizontal="@dimen/screen_pad"
+        android:paddingTop="2dp"
         android:paddingBottom="20dp"
         android:scrollbars="none" />
-
 </LinearLayout>

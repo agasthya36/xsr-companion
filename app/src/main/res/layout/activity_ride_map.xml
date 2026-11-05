@@ -17,7 +17,7 @@
         android:id="@+id/mapToolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="#E6111722"
+        android:background="#F20B111A"
         app:navigationIcon="@drawable/ic_arrow_back"
         app:navigationIconTint="@color/text_primary"
         app:title="@string/map_ride_route"
@@ -29,7 +29,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_margin="12dp">
+        android:layout_margin="12dp"
+        app:cardCornerRadius="18dp">
 
         <TextView
             android:id="@+id/tvMapSummary"

@@ -5,7 +5,9 @@
     style="@style/Widget.Xsr.Card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="10dp">
+    android:layout_marginTop="10dp"
+    android:clickable="true"
+    android:focusable="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -19,11 +21,19 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="Service item"
-                android:src="@drawable/ic_engine" />
+            <FrameLayout
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_icon_badge">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_engine"
+                    app:tint="@color/primary" />
+            </FrameLayout>
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -45,51 +55,73 @@
                     android:id="@+id/tvItemDesc"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
                     android:text="--"
                     android:textAppearance="@style/TextAppearance.Xsr.Caption" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/tvItemStatus"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="--"
-                android:textColor="@color/accent_green"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_status_pill"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="4dp">
+
+                <View
+                    android:id="@+id/itemStatusDot"
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:background="@drawable/bg_status_dot" />
+
+                <TextView
+                    android:id="@+id/tvItemStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="--"
+                    android:textColor="@color/accent_green"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@+id/progressItem"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="13dp"
             app:indicatorColor="@color/primary"
             app:trackColor="@color/surface_high"
-            app:trackCornerRadius="5dp"
+            app:trackCornerRadius="4dp"
             app:trackThickness="7dp" />
+
+        <TextView
+            android:id="@+id/tvItemRemaining"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="--"
+            android:textAppearance="@style/TextAppearance.Xsr.Caption" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
+            android:layout_marginTop="9dp"
+            android:gravity="end"
             android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/tvItemRemaining"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="--"
-                android:textAppearance="@style/TextAppearance.Xsr.Caption" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnItemInterval"
                 style="@style/Widget.Xsr.Button.Outlined"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="32dp"
+                android:minHeight="34dp"
+                android:paddingHorizontal="12dp"
                 android:text="--"
                 android:textSize="11sp" />
 
@@ -100,6 +132,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:minHeight="36dp"
+                android:paddingHorizontal="14dp"
                 android:text="@string/action_log_service"
                 android:textSize="12sp" />
         </LinearLayout>

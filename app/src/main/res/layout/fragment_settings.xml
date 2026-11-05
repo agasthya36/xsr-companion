@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="@drawable/bg_app"
     android:clipToPadding="false"
     android:fillViewport="true"
     android:scrollbars="none">
@@ -13,23 +13,85 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="@dimen/screen_pad"
-        android:paddingTop="20dp"
+        android:paddingTop="18dp"
         android:paddingBottom="28dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="PREFERENCES"
-            android:textAppearance="@style/TextAppearance.Xsr.Label"
-            android:textColor="@color/primary" />
+            android:textAppearance="@style/TextAppearance.Xsr.Eyebrow" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Settings"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenTitle" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@string/settings_subtitle"
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenSubtitle" />
+
+        <!-- Brand card -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Xsr.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_app"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="18dp"
+                android:paddingVertical="16dp">
+
+                <ImageView
+                    android:layout_width="76dp"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/app_name"
+                    android:src="@drawable/xsr_wordmark" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/app_name"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvVersion"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Version"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="@string/about_tagline"
+                        android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Connection -->
         <com.google.android.material.card.MaterialCardView
@@ -48,7 +110,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="CONNECTION"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -191,7 +253,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="UNITS"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <com.google.android.material.button.MaterialButtonToggleGroup
                     android:id="@+id/unitsGroup"
@@ -203,7 +265,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnMetric"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.Xsr.Button.Toggle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -211,7 +273,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnImperial"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.Xsr.Button.Toggle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -237,7 +299,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="RIDING"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -264,7 +326,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnGpsDetailed"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.Xsr.Button.Toggle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -272,7 +334,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnGpsSaver"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        style="@style/Widget.Xsr.Button.Toggle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -341,7 +403,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="FUEL TANK"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -412,7 +474,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="RIDING ALERTS"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -558,7 +620,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="DATA"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnExportData"
@@ -590,7 +652,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- About -->
+        <!-- Privacy -->
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Xsr.Card"
             android:layout_width="match_parent"
@@ -600,30 +662,46 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:padding="@dimen/card_pad">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="ABOUT"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                <FrameLayout
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_badge">
 
-                <TextView
-                    android:id="@+id/tvVersion"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="Version 2.0"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp" />
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_check"
+                        app:tint="@color/accent_green" />
+                </FrameLayout>
 
-                <TextView
-                    android:layout_width="match_parent"
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/privacy_note"
-                    android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+                    android:layout_marginStart="14dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Offline by design"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="@string/privacy_note"
+                        android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

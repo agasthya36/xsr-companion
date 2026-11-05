@@ -34,7 +34,7 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
     private TextView tvFuelLitres, tvFuelPercent, tvRange, tvTankCap;
     private TextView tvNextService, tvNextServiceRemaining, tvDueCount, tvRideHint;
     private View statusDot;
-    private LinearProgressIndicator progressFuel, progressService;
+    private LinearProgressIndicator progressFuel, progressService, progressRpm;
     private MaterialCardView cardPermissions;
     private MaterialButton btnConnect, btnGrant;
 
@@ -42,6 +42,7 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
     private MaintenanceManager maintenance;
     private int lastFuelPercent = -1;
     private int lastServicePercent = -1;
+    private int lastRpm = -1;
 
     @Nullable
     @Override
@@ -64,6 +65,7 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
         tvSpeedUnit = view.findViewById(R.id.tvSpeedUnit);
         tvLiveBadge = view.findViewById(R.id.tvLiveBadge);
         tvRideHint = view.findViewById(R.id.tvRideHint);
+        progressRpm = view.findViewById(R.id.progressRpm);
 
         tvRpm = view.findViewById(R.id.tvRpm);
         tvCoolant = view.findViewById(R.id.tvCoolant);
@@ -134,7 +136,8 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
 
         tvStatus.setText(XsrBleService.sStatusText);
         tvDeviceName.setText(XsrBleService.sDeviceName);
-        tvBattery.setText(XsrBleService.sBatteryLevel + "%");
+        tvBattery.setText(XsrBleService.sBatteryLevel >= 0
+                ? XsrBleService.sBatteryLevel + "%" : "--%");
         btnConnect.setText(connected || active ? R.string.action_disconnect : R.string.action_connect);
 
         int statusColor = connected ? 0xFF34D399
@@ -167,9 +170,14 @@ public class DashboardFragment extends BaseFragment implements MainActivity.Perm
         tvSpeed.setText(Units.speedValue(settings, speed));
         tvSpeedUnit.setText(Units.speedUnit(settings));
         tvLiveBadge.setText(active ? (riding ? "REC" : "LIVE") : "IDLE");
-        tvLiveBadge.setTextColor(active ? 0xFF34D399 : 0xFF6C7A90);
+        tvLiveBadge.setTextColor(active
+                ? (riding ? 0xFF34D399 : 0xFF22D3EE) : 0xFF6C7A90);
 
         tvRpm.setText(String.format(Locale.getDefault(), "%,d", rpm));
+        if (rpm != lastRpm) {
+            lastRpm = rpm;
+            progressRpm.setProgressCompat(Math.max(0, Math.min(12000, rpm)), true);
+        }
         tvCoolant.setText(coolant > 0 ? Units.temp(settings, coolant) : "--");
         tvThrottle.setText(String.format(Locale.getDefault(), "%.0f%%", throttle));
         tvOdometer.setText(odo > 0 ? Units.distance(settings, odo) : "--");

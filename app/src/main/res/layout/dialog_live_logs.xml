@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="@drawable/bg_app"
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -22,41 +22,37 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📜 LIVE CCU &amp; PROTOCOL LOGS"
-                android:textColor="@color/accent_cyan"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:text="LIVE LOGS"
+                android:textAppearance="@style/TextAppearance.Xsr.Eyebrow" />
 
             <TextView
                 android:id="@+id/tvLogCounter"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="3dp"
                 android:text="Monitoring real-time events &amp; BLE packets"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                android:textAppearance="@style/TextAppearance.Xsr.Caption" />
         </LinearLayout>
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCloseLogs"
+            style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:background="@drawable/btn_secondary_dark"
-            android:minWidth="48dp"
-            android:text="✕ Close"
-            android:textColor="@color/text_primary"
+            android:layout_height="wrap_content"
+            android:minHeight="36dp"
+            android:paddingHorizontal="14dp"
+            android:text="@string/action_close"
             android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- Terminal Screen Card -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
         android:layout_marginBottom="12dp"
         android:layout_weight="1"
-        android:background="@drawable/bg_stat_tile"
-        android:padding="10dp">
+        android:background="@drawable/bg_log_terminal"
+        android:padding="12dp">
 
         <ScrollView
             android:id="@+id/scrollLogContainer"
@@ -71,56 +67,44 @@
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="3dp"
                 android:text="Listening for BLE events..."
-                android:textColor="#80D8FF"
+                android:textColor="#9BE7C5"
                 android:textIsSelectable="true"
                 android:textSize="11sp" />
         </ScrollView>
     </FrameLayout>
 
-    <!-- Action Toolbar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnExportLogs"
+            style="@style/Widget.Xsr.Button"
             android:layout_width="0dp"
-            android:layout_height="44dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="5dp"
             android:layout_weight="1"
-            android:background="@drawable/btn_primary_blue"
-            android:text="📤 Export &amp; Share"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            android:text="@string/action_export"
+            app:icon="@drawable/ic_share"
+            app:iconSize="16dp" />
 
-        <Space
-            android:layout_width="8dp"
-            android:layout_height="wrap_content" />
-
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCopyLogs"
+            style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/btn_secondary_dark"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="📋 Copy"
-            android:textColor="@color/text_primary"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="5dp"
+            android:text="@string/action_copy"
             android:textSize="12sp" />
 
-        <Space
-            android:layout_width="8dp"
-            android:layout_height="wrap_content" />
-
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClearLogs"
+            style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/btn_secondary_dark"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="🗑 Clear"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:text="@string/action_clear"
             android:textColor="@color/accent_red"
             android:textSize="12sp" />
     </LinearLayout>

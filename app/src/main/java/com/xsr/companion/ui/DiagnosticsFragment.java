@@ -1,5 +1,6 @@
 package com.xsr.companion.ui;
 
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.text.format.DateFormat;
 import android.view.Gravity;
@@ -146,7 +147,8 @@ public class DiagnosticsFragment extends BaseFragment {
         infoValues[0].setTextColor(XsrBleService.sIsConnected ? 0xFF34D399 : 0xFFA7B3C7);
         infoValues[1].setText(XsrBleService.sDeviceName);
         infoValues[2].setText(String.valueOf(XsrBleService.sPacketCount));
-        infoValues[3].setText(XsrBleService.sBatteryLevel + "%");
+        infoValues[3].setText(XsrBleService.sBatteryLevel >= 0
+                ? XsrBleService.sBatteryLevel + "%" : "--%");
         infoValues[4].setText(odo > 0 ? Units.distance(settings, odo) : "--");
         infoValues[5].setText(XsrBleService.sLastUpdateMs > 0
                 ? DateFormat.getTimeFormat(requireContext())
@@ -155,6 +157,7 @@ public class DiagnosticsFragment extends BaseFragment {
         if (warning || dtcCode > 0) {
             DtcManager.DtcInfo info = DtcManager.lookup(dtcCode);
             imgDtc.setImageResource(R.drawable.ic_warning);
+            imgDtc.setImageTintList(ColorStateList.valueOf(0xFFF87171));
             tvDtcTitle.setText(dtcCode > 0 ? "DTC " + dtcCode + " — " + info.title
                     : "Check engine light active");
             tvDtcTitle.setTextColor(0xFFF87171);
@@ -163,13 +166,14 @@ public class DiagnosticsFragment extends BaseFragment {
             cardDtc.setStrokeColor(0xFFF87171);
         } else {
             imgDtc.setImageResource(R.drawable.ic_check);
+            imgDtc.setImageTintList(ColorStateList.valueOf(0xFF34D399));
             tvDtcTitle.setText("All systems healthy");
             tvDtcTitle.setTextColor(0xFF34D399);
             tvDtcDesc.setText("No active trouble codes. ECU operating within normal parameters.");
             tvDtcAction.setText(speed > 0
                     ? String.format(Locale.getDefault(), "%d RPM • %s", rpm, Units.temp(settings, coolant))
                     : "Waiting for live data");
-            cardDtc.setStrokeColor(0xFF2C3748);
+            cardDtc.setStrokeColor(0xFF26303F);
         }
     }
 
@@ -188,22 +192,21 @@ public class DiagnosticsFragment extends BaseFragment {
         SimpleDateFormat fmt = new SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault());
         LayoutInflater inflater = LayoutInflater.from(requireContext());
         for (RideDatabaseHelper.DtcLogEntry entry : entries) {
-            View row = inflater.inflate(android.R.layout.simple_list_item_2, dtcHistoryList, false);
-            TextView title = row.findViewById(android.R.id.text1);
-            TextView subtitle = row.findViewById(android.R.id.text2);
+            View row = inflater.inflate(R.layout.item_dtc_history, dtcHistoryList, false);
+            TextView title = row.findViewById(R.id.tvDtcHistoryTitle);
+            TextView subtitle = row.findViewById(R.id.tvDtcHistorySubtitle);
+            View dot = row.findViewById(R.id.dtcSeverityDot);
 
+            int severityColor = "CRITICAL".equalsIgnoreCase(entry.severity) ? 0xFFF87171
+                    : "WARNING".equalsIgnoreCase(entry.severity) ? 0xFFFBBF24 : 0xFFA7B3C7;
             title.setText("DTC " + entry.code + " • "
                     + (entry.title != null ? entry.title : "Unknown"));
-            title.setTextColor("CRITICAL".equalsIgnoreCase(entry.severity) ? 0xFFF87171
-                    : "WARNING".equalsIgnoreCase(entry.severity) ? 0xFFFBBF24 : 0xFFF5F8FF);
-            title.setTextSize(14f);
+            title.setTextColor(severityColor);
 
             subtitle.setText(fmt.format(new Date(entry.timestamp))
                     + " • " + Units.distance(settings, entry.odometerKm)
                     + " • " + entry.severity);
-            subtitle.setTextColor(0xFFA7B3C7);
-            subtitle.setTextSize(12f);
-            row.setPadding(0, 10, 0, 10);
+            dot.setBackgroundTintList(ColorStateList.valueOf(severityColor));
             dtcHistoryList.addView(row);
         }
     }

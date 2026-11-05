@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="@drawable/bg_app"
     android:clipToPadding="false"
     android:fillViewport="true"
     android:scrollbars="none">
@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="@dimen/screen_pad"
-        android:paddingTop="20dp"
+        android:paddingTop="18dp"
         android:paddingBottom="28dp">
 
         <!-- Hero -->
@@ -21,8 +21,8 @@
             android:id="@+id/cardHero"
             style="@style/Widget.Xsr.Card"
             android:layout_width="match_parent"
-            android:layout_height="232dp"
-            app:cardCornerRadius="26dp"
+            android:layout_height="252dp"
+            app:cardCornerRadius="28dp"
             app:strokeWidth="0dp">
 
             <FrameLayout
@@ -46,41 +46,60 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="top"
-                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
                     android:paddingHorizontal="18dp"
-                    android:paddingTop="15dp">
+                    android:paddingTop="17dp">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:letterSpacing="0.2"
-                        android:text="YAMAHA"
-                        android:textColor="#BFD3FF"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:letterSpacing="0.2"
+                            android:text="YAMAHA"
+                            android:textColor="#BFD3FF"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="XSR 155"
+                            android:textColor="@color/text_primary"
+                            android:textSize="28sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="64dp"
                         android:layout_height="wrap_content"
-                        android:text="XSR 155"
-                        android:textColor="@color/text_primary"
-                        android:textSize="27sp"
-                        android:textStyle="bold" />
+                        android:adjustViewBounds="true"
+                        android:alpha="0.92"
+                        android:contentDescription="@string/app_name"
+                        android:src="@drawable/xsr_wordmark" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
+                    android:layout_marginHorizontal="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_hero_status"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingHorizontal="15dp"
-                    android:paddingBottom="13dp">
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="10dp">
 
                     <View
                         android:id="@+id/statusDot"
-                        android:layout_width="10dp"
-                        android:layout_height="10dp"
+                        android:layout_width="9dp"
+                        android:layout_height="9dp"
                         android:background="@drawable/bg_status_dot" />
 
                     <LinearLayout
@@ -98,7 +117,7 @@
                             android:maxLines="1"
                             android:text="Disconnected"
                             android:textColor="@color/text_primary"
-                            android:textSize="14sp"
+                            android:textSize="13sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -116,7 +135,7 @@
                         android:id="@+id/tvBattery"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="9dp"
+                        android:layout_marginEnd="8dp"
                         android:text="--%"
                         android:textColor="#D7DEEA"
                         android:textSize="12sp" />
@@ -127,9 +146,11 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:minWidth="0dp"
+                        android:minHeight="40dp"
                         android:paddingHorizontal="14dp"
                         android:text="@string/action_connect"
                         android:textSize="12sp"
+                        app:cornerRadius="14dp"
                         app:icon="@drawable/ic_bluetooth"
                         app:iconSize="16dp" />
                 </LinearLayout>
@@ -142,7 +163,7 @@
             style="@style/Widget.Xsr.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="14dp"
             android:visibility="gone"
             app:cardBackgroundColor="@color/primary_dim"
             app:strokeWidth="0dp">
@@ -153,18 +174,33 @@
                 android:orientation="vertical"
                 android:padding="@dimen/card_pad">
 
-                <TextView
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/perm_title"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_warning" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:text="@string/perm_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="6dp"
                     android:text="@string/perm_message"
                     android:textAppearance="@style/TextAppearance.Xsr.Caption" />
 
@@ -173,7 +209,7 @@
                     style="@style/Widget.Xsr.Button"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="12dp"
                     android:text="@string/perm_grant" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -202,7 +238,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="LIVE SPEED"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                        android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                     <TextView
                         android:id="@+id/tvLiveBadge"
@@ -213,14 +249,14 @@
                         android:paddingVertical="3dp"
                         android:text="IDLE"
                         android:textColor="@color/accent_green"
-                        android:textSize="11sp"
+                        android:textSize="10sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="4dp"
                     android:gravity="bottom"
                     android:orientation="horizontal">
 
@@ -232,23 +268,55 @@
                         android:includeFontPadding="false"
                         android:text="0"
                         android:textColor="@color/text_primary"
-                        android:textSize="76sp" />
+                        android:textSize="78sp" />
 
                     <TextView
                         android:id="@+id/tvSpeedUnit"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="12dp"
+                        android:layout_marginBottom="13dp"
                         android:layout_marginStart="10dp"
                         android:text="km/h"
                         android:textColor="@color/text_secondary"
                         android:textSize="18sp" />
                 </LinearLayout>
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="ENGINE LOAD"
+                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 – 12k RPM"
+                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                </LinearLayout>
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressRpm"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:max="12000"
+                    app:indicatorColor="@color/primary"
+                    app:trackColor="@color/surface_high"
+                    app:trackCornerRadius="3dp"
+                    app:trackThickness="6dp" />
+
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginVertical="12dp"
+                    android:layout_marginVertical="13dp"
                     android:background="@color/outline_color" />
 
                 <TextView
@@ -260,164 +328,190 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Live stats grid -->
-        <LinearLayout
+        <!-- Live telemetry grid -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Xsr.Card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/card_gap"
-            android:orientation="horizontal">
+            android:layout_marginTop="@dimen/card_gap">
 
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Xsr.Card"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
-                android:layout_weight="1">
+                android:orientation="vertical"
+                android:padding="@dimen/card_pad">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="RPM"
-                        android:src="@drawable/ic_speed" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/tvRpm"
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="0"
-                        android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="24sp" />
+                        android:layout_weight="1"
+                        android:text="LIVE TELEMETRY"
+                        android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                     <TextView
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="RPM"
+                        android:text="2 s refresh"
                         android:textAppearance="@style/TextAppearance.Xsr.Label" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Xsr.Card"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
 
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="Coolant"
-                        android:src="@drawable/ic_temp" />
-
-                    <TextView
-                        android:id="@+id/tvCoolant"
-                        android:layout_width="match_parent"
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="--"
-                        android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="24sp" />
+                        android:layout_marginEnd="5dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_stat_tile"
+                        android:orientation="vertical"
+                        android:padding="14dp">
 
-                    <TextView
-                        android:layout_width="match_parent"
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_speed"
+                            app:tint="@color/primary" />
+
+                        <TextView
+                            android:id="@+id/tvRpm"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:includeFontPadding="false"
+                            android:text="0"
+                            android:textAppearance="@style/TextAppearance.Xsr.Metric"
+                            android:textSize="24sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="RPM"
+                            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="COOLANT"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                        android:layout_marginStart="5dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_stat_tile"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_temp"
+                            app:tint="@color/secondary" />
+
+                        <TextView
+                            android:id="@+id/tvCoolant"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:includeFontPadding="false"
+                            android:text="--"
+                            android:textAppearance="@style/TextAppearance.Xsr.Metric"
+                            android:textSize="24sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="COOLANT"
+                            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    </LinearLayout>
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/card_gap"
-            android:orientation="horizontal">
-
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Xsr.Card"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
-                android:layout_weight="1">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
 
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="Throttle"
-                        android:src="@drawable/ic_diagnostics" />
-
-                    <TextView
-                        android:id="@+id/tvThrottle"
-                        android:layout_width="match_parent"
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="0%"
-                        android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="24sp" />
+                        android:layout_marginEnd="5dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_stat_tile"
+                        android:orientation="vertical"
+                        android:padding="14dp">
 
-                    <TextView
-                        android:layout_width="match_parent"
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_diagnostics"
+                            app:tint="@color/tertiary" />
+
+                        <TextView
+                            android:id="@+id/tvThrottle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:includeFontPadding="false"
+                            android:text="0%"
+                            android:textAppearance="@style/TextAppearance.Xsr.Metric"
+                            android:textSize="24sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="THROTTLE"
+                            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="THROTTLE"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                        android:layout_marginStart="5dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_stat_tile"
+                        android:orientation="vertical"
+                        android:padding="14dp">
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_odometer"
+                            app:tint="@color/accent_green" />
+
+                        <TextView
+                            android:id="@+id/tvOdometer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:includeFontPadding="false"
+                            android:text="--"
+                            android:textAppearance="@style/TextAppearance.Xsr.Metric"
+                            android:textSize="24sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="ODOMETER"
+                            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    </LinearLayout>
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Xsr.Card"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_weight="1">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="Odometer"
-                        android:src="@drawable/ic_odometer" />
-
-                    <TextView
-                        android:id="@+id/tvOdometer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="--"
-                        android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="24sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="ODOMETER"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-        </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Current ride -->
         <com.google.android.material.card.MaterialCardView
@@ -435,8 +529,8 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="CURRENT RIDE"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:text="THIS RIDE"
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -454,13 +548,15 @@
                             android:id="@+id/tvRideDistance"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
                             android:text="0.0"
                             android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                            android:textSize="22sp" />
+                            android:textSize="23sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
                             android:text="DISTANCE"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -475,13 +571,15 @@
                             android:id="@+id/tvRideDuration"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
                             android:text="0:00"
                             android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                            android:textSize="22sp" />
+                            android:textSize="23sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
                             android:text="TIME"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
@@ -496,17 +594,25 @@
                             android:id="@+id/tvRideMileage"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:includeFontPadding="false"
                             android:text="--"
                             android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                            android:textSize="22sp" />
+                            android:textSize="23sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
                             android:text="MILEAGE"
                             android:textAppearance="@style/TextAppearance.Xsr.Label" />
                     </LinearLayout>
                 </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="13dp"
+                    android:background="@color/outline_color" />
 
                 <TextView
                     android:id="@+id/tvRideFuel"
@@ -542,7 +648,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="FUEL"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                        android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnRefuel"
@@ -550,8 +656,11 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:minHeight="36dp"
+                        android:paddingHorizontal="12dp"
                         android:text="@string/action_refuel"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        app:icon="@drawable/ic_fuel"
+                        app:iconSize="16dp" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -565,9 +674,10 @@
                         android:id="@+id/tvFuelLitres"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="30sp" />
+                        android:textSize="32sp" />
 
                     <TextView
                         android:id="@+id/tvFuelPercent"
@@ -585,10 +695,10 @@
                     android:id="@+id/progressFuel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="10dp"
                     app:indicatorColor="@color/secondary"
                     app:trackColor="@color/surface_high"
-                    app:trackCornerRadius="6dp"
+                    app:trackCornerRadius="4dp"
                     app:trackThickness="8dp" />
 
                 <LinearLayout
@@ -642,7 +752,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="NEXT SERVICE"
-                        android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                        android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                     <TextView
                         android:id="@+id/tvDueCount"
@@ -685,10 +795,18 @@
                     android:layout_marginTop="10dp"
                     app:indicatorColor="@color/primary"
                     app:trackColor="@color/surface_high"
-                    app:trackCornerRadius="6dp"
+                    app:trackCornerRadius="4dp"
                     app:trackThickness="8dp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="@string/dashboard_footer"
+            android:textAppearance="@style/TextAppearance.Xsr.Label" />
 
     </LinearLayout>
 </ScrollView>

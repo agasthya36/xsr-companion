@@ -24,46 +24,134 @@
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="android:enforceNavigationBarContrast">false</item>
-        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:windowBackground">@drawable/bg_app</item>
 
         <item name="materialCardViewStyle">@style/Widget.Xsr.Card</item>
         <item name="materialButtonStyle">@style/Widget.Xsr.Button</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Xsr.Dialog</item>
     </style>
 
+    <style name="ThemeOverlay.Xsr.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorSurfaceContainerHigh">@color/surface</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearanceOverlay.Xsr.Dialog</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.Xsr.Dialog" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
+    </style>
+
+    <!-- Cards -->
     <style name="Widget.Xsr.Card" parent="Widget.Material3.CardView.Filled">
         <item name="cardBackgroundColor">@color/surface</item>
-        <item name="cardCornerRadius">22dp</item>
+        <item name="cardCornerRadius">20dp</item>
         <item name="cardElevation">0dp</item>
         <item name="strokeColor">@color/outline_color</item>
         <item name="strokeWidth">1dp</item>
         <item name="contentPadding">0dp</item>
+        <item name="rippleColor">@color/ripple</item>
     </style>
 
+    <!-- Buttons -->
     <style name="Widget.Xsr.Button" parent="Widget.Material3.Button">
-        <item name="cornerRadius">18dp</item>
-        <item name="android:minHeight">52dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:minHeight">48dp</item>
         <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="iconPadding">8dp</item>
     </style>
 
     <style name="Widget.Xsr.Button.Outlined" parent="Widget.Material3.Button.OutlinedButton">
-        <item name="cornerRadius">18dp</item>
-        <item name="android:minHeight">48dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:minHeight">46dp</item>
         <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="strokeColor">@color/outline</item>
+    </style>
+
+    <style name="Widget.Xsr.Button.Toggle" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="cornerRadius">14dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="strokeColor">@color/outline</item>
+    </style>
+
+    <style name="Widget.Xsr.TextInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">14dp</item>
+        <item name="boxCornerRadiusTopEnd">14dp</item>
+        <item name="boxCornerRadiusBottomStart">14dp</item>
+        <item name="boxCornerRadiusBottomEnd">14dp</item>
+        <item name="boxStrokeColor">@color/primary</item>
+        <item name="hintTextColor">@color/text_secondary</item>
+    </style>
+
+    <!-- Bottom navigation -->
+    <style name="Widget.Xsr.BottomNav" parent="Widget.Material3.BottomNavigationView">
+        <item name="android:background">@color/surface</item>
+        <item name="elevation">0dp</item>
+        <item name="itemIconTint">@color/nav_item_tint</item>
+        <item name="itemTextColor">@color/nav_item_tint</item>
+        <item name="itemActiveIndicatorStyle">@style/Widget.Xsr.BottomNav.ActiveIndicator</item>
+        <item name="labelVisibilityMode">labeled</item>
+    </style>
+
+    <style name="Widget.Xsr.BottomNav.ActiveIndicator"
+        parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/primary_dim</item>
+        <item name="android:width">64dp</item>
+        <item name="android:height">30dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Material3.Corner.Full</item>
+    </style>
+
+    <!-- Typography -->
+    <style name="TextAppearance.Xsr.Eyebrow" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textColor">@color/primary</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.18</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="TextAppearance.Xsr.ScreenTitle" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.015</item>
+    </style>
+
+    <style name="TextAppearance.Xsr.ScreenSubtitle" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingExtra">2dp</item>
     </style>
 
     <style name="TextAppearance.Xsr.Label" parent="TextAppearance.Material3.LabelMedium">
         <item name="android:textColor">@color/text_muted</item>
-        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:letterSpacing">0.14</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="TextAppearance.Xsr.SectionLabel" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:letterSpacing">0.16</item>
+        <item name="android:textStyle">bold</item>
         <item name="android:textAllCaps">true</item>
     </style>
 
     <style name="TextAppearance.Xsr.Metric" parent="TextAppearance.Material3.HeadlineSmall">
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.01</item>
     </style>
 
     <style name="TextAppearance.Xsr.Caption" parent="TextAppearance.Material3.BodySmall">
         <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:lineSpacingExtra">2dp</item>
     </style>
 
     <style name="Widget.Xsr.SectionTitle" parent="TextAppearance.Material3.TitleMedium">

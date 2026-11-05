@@ -1,5 +1,6 @@
 package com.xsr.companion.ui;
 
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.LayoutInflater;
@@ -38,6 +39,7 @@ public class MaintenanceFragment extends BaseFragment {
     private static class Row {
         String id;
         TextView title, desc, status, remaining;
+        View statusDot;
         com.google.android.material.button.MaterialButton interval, log;
         LinearProgressIndicator progress;
         int lastPercent = -1;
@@ -87,6 +89,7 @@ public class MaintenanceFragment extends BaseFragment {
             row.title = rowView.findViewById(R.id.tvItemTitle);
             row.desc = rowView.findViewById(R.id.tvItemDesc);
             row.status = rowView.findViewById(R.id.tvItemStatus);
+            row.statusDot = rowView.findViewById(R.id.itemStatusDot);
             row.remaining = rowView.findViewById(R.id.tvItemRemaining);
             row.interval = rowView.findViewById(R.id.btnItemInterval);
             row.log = rowView.findViewById(R.id.btnLogService);
@@ -145,8 +148,7 @@ public class MaintenanceFragment extends BaseFragment {
         }
 
         if (item.lastServiceTime <= 0) {
-            row.status.setText("NEVER");
-            row.status.setTextColor(0xFF4D8DFF);
+            setStatus(row, "NEVER", 0xFF4D8DFF);
             row.progress.setIndicatorColor(0xFF4D8DFF);
             row.remaining.setText(Units.shortDistance(settings, item.intervalKm)
                     + " remaining • last done: never");
@@ -154,23 +156,28 @@ public class MaintenanceFragment extends BaseFragment {
         }
 
         if (item.isOverdue(odo)) {
-            row.status.setText("OVERDUE");
-            row.status.setTextColor(0xFFF87171);
+            setStatus(row, "OVERDUE", 0xFFF87171);
             row.progress.setIndicatorColor(0xFFF87171);
             row.remaining.setText("Overdue by " + Units.shortDistance(settings, Math.abs(remaining))
                     + " • last at " + Units.shortDistance(settings, item.lastServiceOdoKm));
         } else if (item.isDueSoon(odo)) {
-            row.status.setText("DUE SOON");
-            row.status.setTextColor(0xFFFBBF24);
+            setStatus(row, "DUE SOON", 0xFFFBBF24);
             row.progress.setIndicatorColor(0xFFFBBF24);
             row.remaining.setText(Units.shortDistance(settings, remaining) + " remaining • last at "
                     + Units.shortDistance(settings, item.lastServiceOdoKm));
         } else {
-            row.status.setText("OK");
-            row.status.setTextColor(0xFF34D399);
+            setStatus(row, "OK", 0xFF34D399);
             row.progress.setIndicatorColor(0xFF4D8DFF);
             row.remaining.setText(Units.shortDistance(settings, remaining) + " remaining • last at "
                     + Units.shortDistance(settings, item.lastServiceOdoKm));
+        }
+    }
+
+    private void setStatus(Row row, String text, int color) {
+        row.status.setText(text);
+        row.status.setTextColor(color);
+        if (row.statusDot != null) {
+            row.statusDot.setBackgroundTintList(ColorStateList.valueOf(color));
         }
     }
 

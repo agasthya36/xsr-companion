@@ -1,97 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Keep the bike inside the adaptive-icon safe zone. -->
-    <group
-        android:pivotX="54"
-        android:pivotY="54"
-        android:scaleX="0.82"
-        android:scaleY="0.82">
-
-        <!-- Rear tyre -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="5.5"
-            android:pathData="M34,71m-10.5,0a10.5,10.5 0,1 1,21 0a10.5,10.5 0,1 1,-21 0" />
-
-        <!-- Front tyre -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="5.5"
-            android:pathData="M74,71m-10.5,0a10.5,10.5 0,1 1,21 0a10.5,10.5 0,1 1,-21 0" />
-
-        <!-- Rear fender -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="4"
-            android:strokeLineCap="round"
-            android:pathData="M25,65 C28,59 33,55.5 39,54.5" />
-
-        <!-- Swingarm and frame -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="4"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M34,71 L48,69 L51,60" />
-
-        <!-- Engine -->
-        <path
-            android:fillColor="#16325C"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:pathData="M51,58.5 L63,58.5 L64,66 L53,67 Z" />
-
-        <!-- Seat -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="6"
-            android:strokeLineCap="round"
-            android:pathData="M42,56.5 L55,55.5" />
-
-        <!-- Fuel tank -->
-        <path
-            android:fillColor="#4D8DFF"
-            android:pathData="M54,57 C54,50 58,46.5 63,46 C69,45.5 71.5,49 71,55 C66,58.5 59,59 54,57 Z" />
-
-        <!-- Fork -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="4.5"
-            android:strokeLineCap="round"
-            android:pathData="M74,71 L66.5,49" />
-
-        <!-- Handlebar -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="4.5"
-            android:strokeLineCap="round"
-            android:pathData="M66.5,49 L73.5,44" />
-
-        <!-- Headlight bracket -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="2.5"
-            android:strokeLineCap="round"
-            android:pathData="M68,50 L70,51" />
-
-        <!-- Round headlight -->
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#F5F8FF"
-            android:strokeWidth="2.4"
-            android:pathData="M73,51.5m-3.2,0a3.2,3.2 0,1 1,6.4 0a3.2,3.2 0,1 1,-6.4 0" />
-    </group>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M73.83,41.11 L73.59,65.40 L74.33,65.65 L81.52,63.42 L83.26,52.26 L81.52,43.09 Z M33.92,41.11 L26.98,42.84 L26.23,43.34 L24.50,52.76 L26.23,63.42 L34.17,65.65 Z M61.19,38.13 L61.19,68.88 L61.93,69.12 L63.67,68.63 L63.92,68.13 L64.17,50.03 L65.40,50.78 L67.64,53.26 L67.64,66.89 L68.13,67.39 L70.12,66.64 L70.36,53.01 L69.87,51.52 L67.39,48.79 L70.12,45.07 L70.36,40.86 L69.37,39.87 L62.43,38.13 Z M64.17,41.36 L66.64,41.85 L67.64,42.60 L67.64,44.08 L65.40,47.06 L63.92,45.82 Z M46.31,37.88 L44.58,38.38 L44.08,38.88 L44.08,45.57 L42.60,47.31 L41.85,47.31 L40.12,45.32 L40.12,39.62 L37.64,40.36 L37.64,46.56 L38.13,47.55 L39.87,49.04 L39.87,49.79 L38.13,51.27 L37.64,52.26 L37.64,66.40 L38.88,67.14 L40.12,67.14 L40.12,53.75 L40.36,53.01 L41.85,51.52 L42.35,51.52 L44.08,53.26 L44.08,68.38 L46.07,69.12 L46.56,68.88 L46.56,52.02 L44.33,49.29 L46.56,46.81 Z M53.01,36.15 L49.54,37.14 L49.29,37.64 L49.29,45.82 L49.79,47.55 L55.74,53.26 L55.74,67.64 L54.74,68.38 L53.01,68.38 L52.02,67.64 L52.02,54.99 L49.54,52.51 L49.29,69.62 L50.28,70.36 L54.00,71.36 L58.46,69.87 L58.46,52.51 L57.72,51.02 L54.50,48.30 L52.02,45.57 L52.02,39.37 L53.26,38.63 L54.50,38.63 L55.74,39.37 L55.74,44.33 L58.21,46.81 L58.46,37.39 L54.74,36.15 Z" />
 </vector>

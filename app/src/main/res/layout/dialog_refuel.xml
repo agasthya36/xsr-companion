@@ -32,7 +32,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnFull"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.Xsr.Button.Toggle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -40,7 +40,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPartial"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.Xsr.Button.Toggle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -49,15 +49,11 @@
 
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/litresLayout"
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Xsr.TextInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:hint="Litres added"
-        app:boxCornerRadiusBottomEnd="14dp"
-        app:boxCornerRadiusBottomStart="14dp"
-        app:boxCornerRadiusTopEnd="14dp"
-        app:boxCornerRadiusTopStart="14dp">
+        android:hint="Litres added">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/inputLitres"
@@ -67,15 +63,11 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Xsr.TextInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:hint="Price per litre (optional)"
-        app:boxCornerRadiusBottomEnd="14dp"
-        app:boxCornerRadiusBottomStart="14dp"
-        app:boxCornerRadiusTopEnd="14dp"
-        app:boxCornerRadiusTopStart="14dp">
+        android:hint="Price per litre (optional)">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/inputPrice"
@@ -85,15 +77,11 @@
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        style="@style/Widget.Xsr.TextInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:hint="Notes (optional)"
-        app:boxCornerRadiusBottomEnd="14dp"
-        app:boxCornerRadiusBottomStart="14dp"
-        app:boxCornerRadiusTopEnd="14dp"
-        app:boxCornerRadiusTopStart="14dp">
+        android:hint="Notes (optional)">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/inputNotes"

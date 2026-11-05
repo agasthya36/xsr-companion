@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="@drawable/bg_app"
     android:clipToPadding="false"
     android:fillViewport="true"
     android:scrollbars="none">
@@ -13,23 +13,27 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="@dimen/screen_pad"
-        android:paddingTop="20dp"
+        android:paddingTop="18dp"
         android:paddingBottom="28dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="ECU"
-            android:textAppearance="@style/TextAppearance.Xsr.Label"
-            android:textColor="@color/primary" />
+            android:textAppearance="@style/TextAppearance.Xsr.Eyebrow" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Diagnostics"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenTitle" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@string/diagnostics_subtitle"
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenSubtitle" />
 
         <!-- Current DTC -->
         <com.google.android.material.card.MaterialCardView
@@ -51,30 +55,51 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <ImageView
-                        android:id="@+id/imgDtc"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:contentDescription="Diagnostics status"
-                        android:src="@drawable/ic_check" />
+                    <FrameLayout
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:background="@drawable/bg_icon_badge">
 
-                    <TextView
-                        android:id="@+id/tvDtcTitle"
+                        <ImageView
+                            android:id="@+id/imgDtc"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:contentDescription="Diagnostics status"
+                            android:src="@drawable/ic_check"
+                            app:tint="@color/accent_green" />
+                    </FrameLayout>
+
+                    <LinearLayout
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:layout_weight="1"
-                        android:text="All systems healthy"
-                        android:textColor="@color/text_primary"
-                        android:textSize="17sp"
-                        android:textStyle="bold" />
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="CURRENT STATUS"
+                            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+
+                        <TextView
+                            android:id="@+id/tvDtcTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="All systems healthy"
+                            android:textColor="@color/text_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvDtcDesc"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="10dp"
                     android:text="No active trouble codes."
                     android:textAppearance="@style/TextAppearance.Xsr.Caption" />
 
@@ -106,7 +131,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="LINK STATUS"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label" />
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
                 <LinearLayout
                     android:id="@+id/infoContainer"
@@ -122,7 +147,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="DTC HISTORY"
-            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+            android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
         <TextView
             android:id="@+id/tvNoDtcHistory"

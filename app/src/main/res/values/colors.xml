@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Core surfaces (dark, Material 3) -->
-    <color name="bg_dark">#080B11</color>
-    <color name="surface">#111722</color>
-    <color name="surface_variant">#1A2231</color>
-    <color name="surface_high">#212B3D</color>
-    <color name="outline">#2C3748</color>
-    <color name="outline_color">#2C3748</color>
+    <color name="bg_dark">#07090D</color>
+    <color name="surface">#10151E</color>
+    <color name="surface_variant">#161D29</color>
+    <color name="surface_high">#1E2837</color>
+    <color name="outline">#26303F</color>
+    <color name="outline_color">#26303F</color>
 
     <!-- Brand / accent -->
     <color name="primary">#4D8DFF</color>
@@ -26,16 +26,16 @@
 
     <!-- Text -->
     <color name="text_primary">#F5F8FF</color>
-    <color name="text_secondary">#A7B3C7</color>
-    <color name="text_muted">#6C7A90</color>
+    <color name="text_secondary">#A9B5C8</color>
+    <color name="text_muted">#6E7C93</color>
 
-    <!-- Legacy aliases used by older layouts -->
-    <color name="card_bg">#111722</color>
-    <color name="stat_bg">#0D1320</color>
-    <color name="border_color">#2C3748</color>
-
-    <color name="ic_launcher_background">#0B1220</color>
+    <!-- Translucent layers -->
+    <color name="hero_status_bg">#D90B111A</color>
+    <color name="hero_status_stroke">#26FFFFFF</color>
+    <color name="ripple">#24FFFFFF</color>
     <color name="scrim">#B3000000</color>
+
+    <color name="ic_launcher_background">#080B11</color>
     <color name="chart_line">#4D8DFF</color>
     <color name="chart_fill">#334D8DFF</color>
 </resources>

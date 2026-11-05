@@ -25,6 +25,8 @@
     <string name="action_refuel">Log refuel</string>
     <string name="action_log_service">Log service</string>
     <string name="action_view_logs">Live logs</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_clear">Clear</string>
     <string name="action_close">Close</string>
     <string name="action_view_route">View route on map</string>
 
@@ -39,7 +41,15 @@
     <string name="perm_grant">Grant permissions</string>
 
     <string name="empty_rides">No rides yet. Turn the bike on and ride — recording starts automatically.</string>
+    <string name="empty_rides_title">No rides yet</string>
     <string name="empty_history">Nothing logged yet.</string>
+
+    <string name="dashboard_footer">OFFLINE BY DESIGN · YOUR DATA STAYS ON THIS PHONE</string>
+    <string name="rides_subtitle">Every ride is recorded and stored on this phone.</string>
+    <string name="maintenance_subtitle">Keep the XSR in shape with odometer-based intervals.</string>
+    <string name="diagnostics_subtitle">What the ECU is reporting, explained in plain language.</string>
+    <string name="settings_subtitle">Tune the app to your bike and how you ride.</string>
+    <string name="about_tagline">Built for the Yamaha XSR 155</string>
 
     <string name="privacy_note">Offline by design. No accounts, no analytics, no telemetry uploads. Network access is used only for map tiles when you open a ride route.</string>
 </resources>

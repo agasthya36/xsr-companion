@@ -31,7 +31,8 @@ public class RidesFragment extends BaseFragment {
     private SettingsManager settings;
     private RideAdapter adapter;
     private RecyclerView recycler;
-    private TextView tvEmpty, tvTotalDistance, tvRideCount, tvTopSpeed, tvTotalTime, tvAvgMileage;
+    private View tvEmpty;
+    private TextView tvTotalDistance, tvRideCount, tvTopSpeed, tvTotalTime, tvAvgMileage;
 
     private long lastLoadMs = 0L;
     private final ExecutorService io = Executors.newSingleThreadExecutor();

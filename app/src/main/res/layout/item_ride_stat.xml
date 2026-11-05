@@ -4,26 +4,26 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_stat_tile"
     android:orientation="vertical"
-    android:paddingStart="12dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="12dp"
-    android:paddingBottom="8dp">
-
-    <TextView
-        android:id="@+id/tvStatValue"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:text="--"
-        android:textAppearance="@style/TextAppearance.Xsr.Metric"
-        android:textSize="18sp" />
+    android:paddingStart="14dp"
+    android:paddingTop="11dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="11dp">
 
     <TextView
         android:id="@+id/tvStatLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="1dp"
         android:maxLines="1"
         android:text="STAT"
         android:textAppearance="@style/TextAppearance.Xsr.Label" />
+
+    <TextView
+        android:id="@+id/tvStatValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:maxLines="1"
+        android:text="--"
+        android:textAppearance="@style/TextAppearance.Xsr.Metric"
+        android:textSize="17sp" />
 </LinearLayout>

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark"
+    android:background="@drawable/bg_app"
     android:clipToPadding="false"
     android:fillViewport="true"
     android:scrollbars="none">
@@ -13,23 +13,27 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="@dimen/screen_pad"
-        android:paddingTop="20dp"
+        android:paddingTop="18dp"
         android:paddingBottom="28dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="WORKSHOP"
-            android:textAppearance="@style/TextAppearance.Xsr.Label"
-            android:textColor="@color/primary" />
+            android:textAppearance="@style/TextAppearance.Xsr.Eyebrow" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Maintenance"
-            android:textColor="@color/text_primary"
-            android:textSize="30sp"
-            android:textStyle="bold" />
+            android:text="Service"
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenTitle" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="@string/maintenance_subtitle"
+            android:textAppearance="@style/TextAppearance.Xsr.ScreenSubtitle" />
 
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Xsr.Card"
@@ -40,6 +44,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:padding="@dimen/card_pad">
 
@@ -49,20 +54,36 @@
                     android:layout_weight="1"
                     android:orientation="vertical">
 
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_odometer"
+                        app:tint="@color/primary" />
+
                     <TextView
                         android:id="@+id/tvOdometer"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="9dp"
+                        android:includeFontPadding="false"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="26sp" />
+                        android:textSize="27sp" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
                         android:text="CURRENT ODOMETER"
                         android:textAppearance="@style/TextAppearance.Xsr.Label" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="54dp"
+                    android:layout_marginHorizontal="16dp"
+                    android:background="@color/outline_color" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -70,17 +91,27 @@
                     android:layout_weight="1"
                     android:orientation="vertical">
 
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_warning"
+                        app:tint="@color/accent_amber" />
+
                     <TextView
                         android:id="@+id/tvDueSummary"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="9dp"
+                        android:includeFontPadding="false"
                         android:text="--"
                         android:textAppearance="@style/TextAppearance.Xsr.Metric"
-                        android:textSize="26sp" />
+                        android:textSize="27sp" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
                         android:text="DUE / SOON"
                         android:textAppearance="@style/TextAppearance.Xsr.Label" />
                 </LinearLayout>
@@ -91,9 +122,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:layout_marginBottom="4dp"
+            android:layout_marginBottom="2dp"
             android:text="SERVICE ITEMS"
-            android:textAppearance="@style/TextAppearance.Xsr.Label" />
+            android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
 
         <LinearLayout
             android:id="@+id/serviceList"
@@ -106,18 +137,19 @@
             style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:text="Reset counters to 0"
             android:textColor="@color/accent_amber"
             app:icon="@drawable/ic_warning"
-            app:iconSize="16dp" />
+            app:iconSize="16dp"
+            app:iconTint="@color/accent_amber" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnServiceHistory"
             style="@style/Widget.Xsr.Button.Outlined"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="10dp"
             android:text="Service history"
             app:icon="@drawable/ic_clock"
             app:iconSize="18dp" />
