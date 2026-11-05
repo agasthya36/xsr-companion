@@ -10,8 +10,8 @@ Version 2.1 is a full Material 3 rewrite with five focused screens, automatic ri
 
 ### Ride route map
 - **View route on map** on any recorded ride, drawn from the locally stored GPS points.
-- OpenStreetMap tiles (Leaflet inside a WebView), start/finish markers, automatic camera fit, and a dark basemap.
-- **No API key required and none is bundled.** Tiles come from CARTO's free basemap service with OpenStreetMap attribution.
+- OpenStreetMap vector tiles (MapLibre GL inside a WebView), start/finish markers, automatic camera fit, and a dark basemap.
+- **No API key required and none is bundled.** Tiles are served by [OpenFreeMap](https://openfreemap.org/), which is free, keyless, and built from OpenStreetMap data.
 - Rides without GPS points disable the button instead of opening an empty map.
 
 ### Link stability
@@ -38,7 +38,7 @@ Version 2.1 is a full Material 3 rewrite with five focused screens, automatic ri
 - The route map only runs while it is open; tiles stop loading when you leave it.
 
 ### Privacy / release hardening
-- Network access is limited to OpenStreetMap/CARTO map tiles in the ride route viewer.
+- Network access is limited to OpenStreetMap vector tiles in the ride route viewer.
 - `android:allowBackup="false"` and no cleartext traffic.
 - File provider is non-exported with canonical-path validation.
 - Release builds use R8 + resource shrinking and optional signing via `keystore.properties`.
@@ -90,7 +90,7 @@ No telemetry uploads.
 Network access only for OpenStreetMap tiles.
 ```
 
-All rides, GPS points, fuel entries, service records, and diagnostic logs stay in the app's private storage. The only network traffic the app can generate is OpenStreetMap/CARTO map-tile requests while a ride route is open. Data leaves the phone otherwise only when you explicitly share or export it.
+All rides, GPS points, fuel entries, service records, and diagnostic logs stay in the app's private storage. The only network traffic the app can generate is OpenStreetMap vector-tile requests while a ride route is open. Data leaves the phone otherwise only when you explicitly share or export it.
 
 ---
 
@@ -122,19 +122,20 @@ Run unit tests:
 ### Map tiles (no API key)
 
 The ride-route viewer renders locally stored GPS points with
-[Leaflet](https://leafletjs.com/) inside a WebView, on top of
-[CARTO dark basemap](https://carto.com/basemaps) tiles built from
+[MapLibre GL JS](https://maplibre.org/) inside a WebView, on top of the
+[OpenFreeMap](https://openfreemap.org/) dark style built from
 [OpenStreetMap](https://www.openstreetmap.org/copyright) data.
 
 - **No Google Maps SDK, no API key, and no key is compiled into the APK.**
-- Only tile images are requested; the route itself never leaves the phone.
-- The HTML lives in `app/src/main/assets/map.html`; Leaflet 1.9.4 is bundled in
-  `app/src/main/assets/leaflet/`, so only tile images need the network. To use a
-  different tile provider, edit the `L.tileLayer(...)` URL in `map.html` and keep
-  the attribution.
+- Only vector tiles, glyphs and sprites are requested; the route itself never
+  leaves the phone.
+- The HTML lives in `app/src/main/assets/map.html`; MapLibre GL JS 5.9.0 is
+  bundled in `app/src/main/assets/maplibre/`, so only map data needs the
+  network. To use a different provider, change the `style` URL in `map.html`
+  and keep the attribution.
 - If the phone is offline, the route still draws over an empty dark canvas.
-- The CARTO basemaps are free for non-commercial use and require the
-  attribution shown in the map's bottom-right corner.
+- OpenFreeMap requires no account or key. The map shows the required
+  OpenStreetMap/OpenFreeMap attribution in the bottom-right corner.
 
 ### Signed release
 

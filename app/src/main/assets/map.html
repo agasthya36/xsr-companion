@@ -5,7 +5,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ride route</title>
-    <link rel="stylesheet" href="leaflet/leaflet.css">
+    <link rel="stylesheet" href="maplibre/maplibre-gl.css">
     <style>
         html, body, #map {
             height: 100%;
@@ -15,26 +15,23 @@
             background: #0E1218;
         }
 
-        .leaflet-container {
-            background: #0E1218;
-            font-family: Roboto, -apple-system, sans-serif;
-            outline: none;
+        body {
+            overflow: hidden;
         }
 
-        .leaflet-control-attribution {
+        .maplibregl-ctrl-attrib {
             background: rgba(14, 18, 24, 0.78) !important;
             color: #9AA4B2 !important;
-            font-size: 10px;
-            padding: 2px 6px;
+            font: 10px/1.4 Roboto, -apple-system, sans-serif;
             border-radius: 6px;
         }
 
-        .leaflet-control-attribution a {
+        .maplibregl-ctrl-attrib a {
             color: #8FB4FF !important;
         }
 
         /* Keep the attribution clear of the native summary card. */
-        .leaflet-bottom.leaflet-right {
+        .maplibregl-ctrl-bottom-right {
             bottom: 92px;
         }
 
@@ -63,7 +60,7 @@
 </head>
 <body>
 <div id="map"></div>
-<script src="leaflet/leaflet.js"></script>
+<script src="maplibre/maplibre-gl.js"></script>
 <script>
     (function () {
         'use strict';
@@ -83,45 +80,130 @@
             return false;
         };
 
-        var map = L.map('map', {
-            zoomControl: false,
-            attributionControl: true,
-            preferCanvas: true,
-            worldCopyJump: true
-        }).setView([0, 0], 2);
-
-        // Dark raster basemap. OSM data, CARTO styling. No API key required.
-        var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            subdomains: 'abcd',
-            maxZoom: 20,
-            detectRetina: true,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-                + 'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        }).addTo(map);
-
-        tiles.on('tileerror', function (event) {
-            notify('onTileError', (event && event.tile && event.tile.src) || 'unknown tile');
+        // OpenFreeMap: free vector tiles, no API key, no registration.
+        var map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tiles.openfreemap.org/styles/dark',
+            center: [0, 0],
+            zoom: 1,
+            attributionControl: { compact: false },
+            fadeDuration: 0,
+            maxTileCacheSize: 64,
+            refreshExpiredTiles: false,
+            renderWorldCopies: true
         });
 
-        notify('onReady', 'leaflet ' + L.version);
+        map.dragRotate.disable();
+        map.touchZoomRotate.disableRotation();
 
-        var routeLayer = null;
-        var startMarker = null;
-        var finishMarker = null;
+        var ready = false;
+        var pending = null;
+        var routeLayerIds = ['xsr-route-casing', 'xsr-route-line'];
+        var markers = [];
 
-        function pin(latlng, cls, letter, title) {
-            return L.marker(latlng, {
-                keyboard: false,
-                title: title,
-                alt: title,
-                riseOnHover: true,
-                icon: L.divIcon({
-                    className: '',
-                    html: '<div class="pin ' + cls + '">' + letter + '</div>',
-                    iconSize: [26, 26],
-                    iconAnchor: [13, 13]
-                })
+        map.on('load', function () {
+            ready = true;
+            notify('onReady', 'maplibre ' + maplibregl.getVersion());
+            map.once('idle', function () {
+                notify('onIdle', 'sources=' + Object.keys(map.getStyle().sources).join('|'));
             });
+            if (pending) {
+                var args = pending;
+                pending = null;
+                draw(args[0], args[1], args[2]);
+            }
+        });
+
+        map.on('error', function (event) {
+            var message = event && event.error && event.error.message
+                ? event.error.message
+                : 'map error';
+            notify('onTileError', message);
+        });
+
+        window.addEventListener('resize', function () {
+            map.resize();
+        });
+
+        function clearRoute() {
+            for (var i = 0; i < markers.length; i++) {
+                markers[i].remove();
+            }
+            markers = [];
+            for (var j = 0; j < routeLayerIds.length; j++) {
+                if (map.getLayer(routeLayerIds[j])) map.removeLayer(routeLayerIds[j]);
+            }
+            if (map.getSource('xsr-route')) map.removeSource('xsr-route');
+        }
+
+        function pin(lngLat, cls, letter, title) {
+            var el = document.createElement('div');
+            el.className = 'pin ' + cls;
+            el.textContent = letter;
+            el.title = title;
+            el.setAttribute('aria-label', title);
+            return new maplibregl.Marker({ element: el, anchor: 'center' })
+                .setLngLat(lngLat)
+                .addTo(map);
+        }
+
+        function draw(points, startLabel, finishLabel) {
+            clearRoute();
+            if (!points || points.length === 0) return;
+
+            var latlngs = points.map(function (p) { return [p[1], p[0]]; });
+            var coordinates = points.map(function (p) { return [p[1], p[0]]; });
+
+            map.addSource('xsr-route', {
+                type: 'geojson',
+                data: {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'LineString', coordinates: coordinates }
+                }
+            });
+
+            var firstSymbol = null;
+            var layers = (map.getStyle() && map.getStyle().layers) || [];
+            for (var i = 0; i < layers.length; i++) {
+                if (layers[i].type === 'symbol') {
+                    firstSymbol = layers[i].id;
+                    break;
+                }
+            }
+
+            map.addLayer({
+                id: 'xsr-route-casing',
+                type: 'line',
+                source: 'xsr-route',
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-color': '#4D8DFF', 'line-width': 10, 'line-opacity': 0.18 }
+            }, firstSymbol);
+
+            map.addLayer({
+                id: 'xsr-route-line',
+                type: 'line',
+                source: 'xsr-route',
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-color': '#4D8DFF', 'line-width': 5, 'line-opacity': 0.95 }
+            }, firstSymbol);
+
+            markers.push(pin(latlngs[0], 'start', 'S', startLabel));
+            markers.push(pin(latlngs[latlngs.length - 1], 'finish', 'F', finishLabel));
+
+            if (latlngs.length === 1) {
+                map.jumpTo({ center: latlngs[0], zoom: 16 });
+            } else {
+                var bounds = new maplibregl.LngLatBounds();
+                for (var k = 0; k < latlngs.length; k++) bounds.extend(latlngs[k]);
+                map.fitBounds(bounds, {
+                    padding: { top: 72, right: 56, bottom: 120, left: 56 },
+                    maxZoom: 17,
+                    duration: 0
+                });
+            }
+
+            notify('onRouteDrawn', latlngs.length);
         }
 
         /**
@@ -129,58 +211,11 @@
          * points: [[lat, lng], ...]
          */
         window.showRoute = function (points, startLabel, finishLabel) {
-            if (routeLayer) {
-                map.removeLayer(routeLayer);
-                routeLayer = null;
-            }
-            if (startMarker) {
-                map.removeLayer(startMarker);
-                startMarker = null;
-            }
-            if (finishMarker) {
-                map.removeLayer(finishMarker);
-                finishMarker = null;
-            }
-
-            if (!points || points.length === 0) {
+            if (!ready) {
+                pending = [points, startLabel, finishLabel];
                 return;
             }
-
-            var latlngs = points.map(function (p) {
-                return [p[0], p[1]];
-            });
-
-            // Soft glow under the solid route line.
-            L.polyline(latlngs, {
-                color: '#4D8DFF',
-                weight: 11,
-                opacity: 0.16,
-                lineCap: 'round',
-                lineJoin: 'round'
-            }).addTo(map);
-
-            routeLayer = L.polyline(latlngs, {
-                color: '#4D8DFF',
-                weight: 5,
-                opacity: 0.95,
-                lineCap: 'round',
-                lineJoin: 'round'
-            }).addTo(map);
-
-            startMarker = pin(latlngs[0], 'start', 'S', startLabel).addTo(map);
-            finishMarker = pin(latlngs[latlngs.length - 1], 'finish', 'F', finishLabel).addTo(map);
-
-            if (latlngs.length === 1) {
-                map.setView(latlngs[0], 16, { animate: false });
-            } else {
-                map.fitBounds(routeLayer.getBounds(), {
-                    padding: [56, 56],
-                    maxZoom: 17,
-                    animate: false
-                });
-            }
-
-            notify('onRouteDrawn', latlngs.length);
+            draw(points, startLabel, finishLabel);
         };
     })();
 </script>

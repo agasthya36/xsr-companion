@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Debug-only: lets adb launch the route map with a synthetic demo route. -->
+    <application>
+        <activity
+            android:name=".ui.RideMapActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

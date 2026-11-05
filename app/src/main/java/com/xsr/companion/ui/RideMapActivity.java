@@ -23,6 +23,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.card.MaterialCardView;
+import com.xsr.companion.BuildConfig;
 import com.xsr.companion.R;
 import com.xsr.companion.data.RideDatabaseHelper;
 import com.xsr.companion.settings.SettingsManager;
@@ -81,7 +82,31 @@ public class RideMapActivity extends AppCompatActivity {
         configureWebView();
         webView.loadUrl(MAP_URL);
 
-        if (rideId > 0) loadRide();
+        if (rideId > 0) {
+            loadRide();
+        } else if (BuildConfig.DEBUG) {
+            // Debug-only hook for exercising the map without a GPS ride:
+            // adb shell am start ... --es demo_route "lat,lng;lat,lng"
+            String demo = getIntent().getStringExtra("demo_route");
+            if (demo != null && !demo.isEmpty()) drawRoute(parseDemoRoute(demo));
+        }
+    }
+
+    private JSONArray parseDemoRoute(String raw) {
+        JSONArray out = new JSONArray();
+        for (String pair : raw.split(";")) {
+            String[] parts = pair.split(",");
+            if (parts.length != 2) continue;
+            try {
+                JSONArray latLng = new JSONArray();
+                latLng.put(Double.parseDouble(parts[0].trim()));
+                latLng.put(Double.parseDouble(parts[1].trim()));
+                out.put(latLng);
+            } catch (Exception ignored) {
+                // Skip malformed demo coordinates.
+            }
+        }
+        return out;
     }
 
     private class MapBridge {
@@ -98,6 +123,11 @@ public class RideMapActivity extends AppCompatActivity {
         @JavascriptInterface
         public void onTileError(String url) {
             Log.w(TAG, "tile error: " + url);
+        }
+
+        @JavascriptInterface
+        public void onIdle(String info) {
+            Log.i(TAG, "map idle: " + info);
         }
 
         @JavascriptInterface

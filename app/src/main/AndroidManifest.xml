@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-        Network access exists only for OpenStreetMap map tiles in the ride
+        Network access exists only for OpenStreetMap vector tiles in the ride
         route viewer. The companion logic itself never uploads telemetry or
         account data; exports still leave the phone only when the rider shares
         them. No API key is required or bundled.
