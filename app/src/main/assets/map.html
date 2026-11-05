@@ -68,6 +68,21 @@
     (function () {
         'use strict';
 
+        function notify(method, value) {
+            try {
+                if (window.XsrMap && typeof window.XsrMap[method] === 'function') {
+                    window.XsrMap[method](value);
+                }
+            } catch (ignored) {
+                // Bridge is Android-only; ignore failures in a plain browser.
+            }
+        }
+
+        window.onerror = function (message, source, line) {
+            notify('onError', message + ' @ ' + source + ':' + line);
+            return false;
+        };
+
         var map = L.map('map', {
             zoomControl: false,
             attributionControl: true,
@@ -76,13 +91,19 @@
         }).setView([0, 0], 2);
 
         // Dark raster basemap. OSM data, CARTO styling. No API key required.
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             subdomains: 'abcd',
             maxZoom: 20,
             detectRetina: true,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
                 + 'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         }).addTo(map);
+
+        tiles.on('tileerror', function (event) {
+            notify('onTileError', (event && event.tile && event.tile.src) || 'unknown tile');
+        });
+
+        notify('onReady', 'leaflet ' + L.version);
 
         var routeLayer = null;
         var startMarker = null;
@@ -158,6 +179,8 @@
                     animate: false
                 });
             }
+
+            notify('onRouteDrawn', latlngs.length);
         };
     })();
 </script>

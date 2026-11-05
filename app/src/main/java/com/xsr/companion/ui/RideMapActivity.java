@@ -4,8 +4,10 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -45,6 +47,7 @@ public class RideMapActivity extends AppCompatActivity {
     public static final String EXTRA_RIDE_ID = "extra_ride_id";
     private static final String STATE_RIDE_ID = "state_ride_id";
     private static final String MAP_URL = "file:///android_asset/map.html";
+    private static final String TAG = "RideMap";
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
@@ -81,7 +84,29 @@ public class RideMapActivity extends AppCompatActivity {
         if (rideId > 0) loadRide();
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private class MapBridge {
+        @JavascriptInterface
+        public void onReady(String info) {
+            Log.i(TAG, "map ready: " + info);
+        }
+
+        @JavascriptInterface
+        public void onRouteDrawn(int points) {
+            Log.i(TAG, "route drawn: " + points + " points");
+        }
+
+        @JavascriptInterface
+        public void onTileError(String url) {
+            Log.w(TAG, "tile error: " + url);
+        }
+
+        @JavascriptInterface
+        public void onError(String message) {
+            Log.e(TAG, "js error: " + message);
+        }
+    }
+
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private void configureWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -102,6 +127,7 @@ public class RideMapActivity extends AppCompatActivity {
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
+        webView.addJavascriptInterface(new MapBridge(), "XsrMap");
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
