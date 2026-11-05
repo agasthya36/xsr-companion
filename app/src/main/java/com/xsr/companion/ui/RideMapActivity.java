@@ -1,8 +1,15 @@
 package com.xsr.companion.ui;
 
+import android.annotation.SuppressLint;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -12,45 +19,41 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GoogleApiAvailability;
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.OnMapReadyCallback;
-import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.LatLngBounds;
-import com.google.android.gms.maps.model.MapStyleOptions;
-import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.card.MaterialCardView;
-import com.xsr.companion.BuildConfig;
 import com.xsr.companion.R;
 import com.xsr.companion.data.RideDatabaseHelper;
 import com.xsr.companion.settings.SettingsManager;
 import com.xsr.companion.settings.Units;
 
-import java.util.ArrayList;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Full-screen Google Maps view of one recorded ride. The route comes from the
- * locally stored GPS points; map tiles are the only network traffic.
+ * Full-screen OpenStreetMap (Leaflet) view of one recorded ride. The route
+ * comes from the locally stored GPS points. Map tiles are fetched from CARTO
+ * and are the only network traffic. No API key is required, so nothing secret
+ * is bundled in the APK.
  */
-public class RideMapActivity extends AppCompatActivity implements OnMapReadyCallback {
+public class RideMapActivity extends AppCompatActivity {
 
     public static final String EXTRA_RIDE_ID = "extra_ride_id";
     private static final String STATE_RIDE_ID = "state_ride_id";
+    private static final String MAP_URL = "file:///android_asset/map.html";
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
-    private GoogleMap map;
+    private WebView webView;
+    private boolean pageReady;
+    private String pendingRouteScript;
+
     private long rideId = -1;
-    private List<LatLng> route;
+    private int gpsPointCount;
     private RideDatabaseHelper.RideSummary summary;
     private TextView summaryText;
     private MaterialCardView summaryCard;
@@ -71,28 +74,63 @@ public class RideMapActivity extends AppCompatActivity implements OnMapReadyCall
         summaryCard = findViewById(R.id.mapSummaryCard);
         applyInsets(toolbar);
 
-        if (BuildConfig.MAPS_API_KEY.isEmpty()) {
-            Toast.makeText(this, R.string.map_no_api_key, Toast.LENGTH_LONG).show();
-            finish();
-            return;
-        }
-
-        if (GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(this)
-                != ConnectionResult.SUCCESS) {
-            Toast.makeText(this, R.string.map_play_services_missing, Toast.LENGTH_LONG).show();
-            finish();
-            return;
-        }
-
-        SupportMapFragment mapFragment = (SupportMapFragment)
-                getSupportFragmentManager().findFragmentById(R.id.map);
-        if (mapFragment == null) {
-            finish();
-            return;
-        }
-        mapFragment.getMapAsync(this);
+        webView = findViewById(R.id.map);
+        configureWebView();
+        webView.loadUrl(MAP_URL);
 
         if (rideId > 0) loadRide();
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void configureWebView() {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(false);
+        settings.setDatabaseEnabled(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccess(true);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+
+        webView.setBackgroundColor(0xFF0E1218);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                pageReady = true;
+                if (pendingRouteScript != null) {
+                    String script = pendingRouteScript;
+                    pendingRouteScript = null;
+                    view.evaluateJavascript(script, null);
+                }
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                String scheme = uri.getScheme();
+                // The asset page itself stays inside the WebView. Attribution
+                // links open in the browser so the map is never replaced.
+                if ("file".equals(scheme)) return false;
+                if ("http".equals(scheme) || "https".equals(scheme)) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                    } catch (Exception ignored) {
+                        // No browser installed; leave the map untouched.
+                    }
+                }
+                return true;
+            }
+        });
     }
 
     private void applyInsets(View toolbar) {
@@ -119,18 +157,30 @@ public class RideMapActivity extends AppCompatActivity implements OnMapReadyCall
             RideDatabaseHelper db = RideDatabaseHelper.getInstance(this);
             RideDatabaseHelper.RideSummary loaded = db.getRide(rideId);
             List<RideDatabaseHelper.RidePoint> points = db.getPointsForRide(rideId);
-            List<LatLng> coords = new ArrayList<>();
+            JSONArray coords = new JSONArray();
+            int count = 0;
             if (points != null) {
                 for (RideDatabaseHelper.RidePoint p : points) {
-                    if (p.hasGps) coords.add(new LatLng(p.latitude, p.longitude));
+                    if (!p.hasGps) continue;
+                    try {
+                        JSONArray pair = new JSONArray();
+                        pair.put(p.latitude);
+                        pair.put(p.longitude);
+                        coords.put(pair);
+                        count++;
+                    } catch (org.json.JSONException ignored) {
+                        // A malformed coordinate must not drop the whole route.
+                    }
                 }
             }
+            final int pointCount = count;
+            final JSONArray route = coords;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 summary = loaded;
-                route = coords;
+                gpsPointCount = pointCount;
                 updateSummary();
-                drawRoute();
+                drawRoute(route);
             });
         });
     }
@@ -140,59 +190,41 @@ public class RideMapActivity extends AppCompatActivity implements OnMapReadyCall
             summaryText.setText(R.string.map_no_route);
             return;
         }
-        int points = route != null ? route.size() : 0;
         String distance = Units.distance(SettingsManager.get(this), summary.distanceKm);
         summaryText.setText(String.format(Locale.getDefault(),
                 "%s\n%s  •  %,d GPS points",
-                summary.getFormattedDate(), distance, points));
+                summary.getFormattedDate(), distance, gpsPointCount));
     }
 
-    private void drawRoute() {
-        if (map == null || route == null) return;
-        if (route.isEmpty()) {
+    private void drawRoute(JSONArray route) {
+        if (route.length() == 0) {
             Toast.makeText(this, R.string.map_no_route, Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        map.getUiSettings().setMapToolbarEnabled(false);
-        map.getUiSettings().setZoomControlsEnabled(false);
-        // Only the route and base tiles are needed; skip extra render layers.
-        map.setBuildingsEnabled(false);
-        map.setIndoorEnabled(false);
-        map.setTrafficEnabled(false);
-        try {
-            map.setMapStyle(MapStyleOptions.loadRawResourceStyle(this, R.raw.map_style_dark));
-        } catch (Exception ignored) {
-            // A style failure must never prevent the route from being shown.
-        }
+        String script = "window.showRoute(" + route + ","
+                + JSONObject.quote(getString(R.string.map_start)) + ","
+                + JSONObject.quote(getString(R.string.map_finish)) + ");";
 
-        map.addPolyline(new PolylineOptions()
-                .addAll(route)
-                .width(12f)
-                .color(0xFF4D8DFF)
-                .geodesic(true));
-
-        map.addMarker(new MarkerOptions()
-                .position(route.get(0))
-                .title(getString(R.string.map_start)));
-        map.addMarker(new MarkerOptions()
-                .position(route.get(route.size() - 1))
-                .title(getString(R.string.map_finish)));
-
-        if (route.size() == 1) {
-            map.moveCamera(CameraUpdateFactory.newLatLngZoom(route.get(0), 15f));
+        if (webView == null) return;
+        if (pageReady) {
+            webView.evaluateJavascript(script, null);
         } else {
-            LatLngBounds.Builder bounds = new LatLngBounds.Builder();
-            for (LatLng point : route) bounds.include(point);
-            map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), dp(56)));
+            pendingRouteScript = script;
         }
     }
 
     @Override
-    public void onMapReady(GoogleMap googleMap) {
-        map = googleMap;
-        drawRoute();
+    protected void onPause() {
+        if (webView != null) webView.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) webView.onResume();
     }
 
     @Override
@@ -204,6 +236,12 @@ public class RideMapActivity extends AppCompatActivity implements OnMapReadyCall
     @Override
     protected void onDestroy() {
         io.shutdownNow();
+        if (webView != null) {
+            webView.stopLoading();
+            webView.setWebViewClient(null);
+            webView.destroy();
+            webView = null;
+        }
         super.onDestroy();
     }
 }

@@ -32,8 +32,6 @@
     <string name="map_no_route">No GPS points were recorded for this ride.</string>
     <string name="map_start">Start</string>
     <string name="map_finish">Finish</string>
-    <string name="map_play_services_missing">Google Play Services is required to display the map.</string>
-    <string name="map_no_api_key">Map unavailable: add MAPS_API_KEY to local.properties and rebuild.</string>
 
     <string name="perm_title">Permissions needed</string>
     <string name="perm_message">Bluetooth, location and notification access are required to talk to the CCU and record rides. Ride data stays on your phone.</string>
@@ -42,5 +40,5 @@
     <string name="empty_rides">No rides yet. Turn the bike on and ride — recording starts automatically.</string>
     <string name="empty_history">Nothing logged yet.</string>
 
-    <string name="privacy_note">Offline by design. No accounts, no analytics, no telemetry uploads. Network access is used only for Google Maps tiles when you open a ride route.</string>
+    <string name="privacy_note">Offline by design. No accounts, no analytics, no telemetry uploads. Network access is used only for map tiles when you open a ride route.</string>
 </resources>

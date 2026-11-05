@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ride route</title>
+    <link rel="stylesheet" href="leaflet/leaflet.css">
+    <style>
+        html, body, #map {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background: #0E1218;
+        }
+
+        .leaflet-container {
+            background: #0E1218;
+            font-family: Roboto, -apple-system, sans-serif;
+            outline: none;
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(14, 18, 24, 0.78) !important;
+            color: #9AA4B2 !important;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+
+        .leaflet-control-attribution a {
+            color: #8FB4FF !important;
+        }
+
+        /* Keep the attribution clear of the native summary card. */
+        .leaflet-bottom.leaflet-right {
+            bottom: 92px;
+        }
+
+        .pin {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font: 700 12px/1 Roboto, sans-serif;
+            color: #fff;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+            box-sizing: border-box;
+        }
+
+        .pin.start {
+            background: #34D399;
+        }
+
+        .pin.finish {
+            background: #F87171;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<script src="leaflet/leaflet.js"></script>
+<script>
+    (function () {
+        'use strict';
+
+        var map = L.map('map', {
+            zoomControl: false,
+            attributionControl: true,
+            preferCanvas: true,
+            worldCopyJump: true
+        }).setView([0, 0], 2);
+
+        // Dark raster basemap. OSM data, CARTO styling. No API key required.
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            maxZoom: 20,
+            detectRetina: true,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
+                + 'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
+
+        var routeLayer = null;
+        var startMarker = null;
+        var finishMarker = null;
+
+        function pin(latlng, cls, letter, title) {
+            return L.marker(latlng, {
+                keyboard: false,
+                title: title,
+                alt: title,
+                riseOnHover: true,
+                icon: L.divIcon({
+                    className: '',
+                    html: '<div class="pin ' + cls + '">' + letter + '</div>',
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
+                })
+            });
+        }
+
+        /**
+         * Called from the Android host once the ride points are loaded.
+         * points: [[lat, lng], ...]
+         */
+        window.showRoute = function (points, startLabel, finishLabel) {
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+                routeLayer = null;
+            }
+            if (startMarker) {
+                map.removeLayer(startMarker);
+                startMarker = null;
+            }
+            if (finishMarker) {
+                map.removeLayer(finishMarker);
+                finishMarker = null;
+            }
+
+            if (!points || points.length === 0) {
+                return;
+            }
+
+            var latlngs = points.map(function (p) {
+                return [p[0], p[1]];
+            });
+
+            // Soft glow under the solid route line.
+            L.polyline(latlngs, {
+                color: '#4D8DFF',
+                weight: 11,
+                opacity: 0.16,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+
+            routeLayer = L.polyline(latlngs, {
+                color: '#4D8DFF',
+                weight: 5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+
+            startMarker = pin(latlngs[0], 'start', 'S', startLabel).addTo(map);
+            finishMarker = pin(latlngs[latlngs.length - 1], 'finish', 'F', finishLabel).addTo(map);
+
+            if (latlngs.length === 1) {
+                map.setView(latlngs[0], 16, { animate: false });
+            } else {
+                map.fitBounds(routeLayer.getBounds(), {
+                    padding: [56, 56],
+                    maxZoom: 17,
+                    animate: false
+                });
+            }
+        };
+    })();
+</script>
+</body>
+</html>

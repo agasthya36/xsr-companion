@@ -6,11 +6,12 @@
     android:layout_height="match_parent"
     android:background="@color/bg_dark">
 
-    <fragment
+    <WebView
         android:id="@+id/map"
-        android:name="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:background="@color/bg_dark"
+        android:importantForAutofill="no" />
 
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/mapToolbar"
