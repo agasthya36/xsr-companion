@@ -1,21 +1,97 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#F5F8FF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M30,68 A26,26 0 1,1 78,68" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#22D3EE"
-        android:strokeWidth="4.5"
-        android:strokeLineCap="round"
-        android:pathData="M54,58 L69,41" />
-    <path android:fillColor="#4D8DFF"
-        android:pathData="M54,54m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#4D8DFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:pathData="M34,60 L30,60 M78,60 L74,60 M54,28 L54,24" />
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Keep the bike inside the adaptive-icon safe zone. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.82"
+        android:scaleY="0.82">
+
+        <!-- Rear tyre -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="5.5"
+            android:pathData="M34,71m-10.5,0a10.5,10.5 0,1 1,21 0a10.5,10.5 0,1 1,-21 0" />
+
+        <!-- Front tyre -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="5.5"
+            android:pathData="M74,71m-10.5,0a10.5,10.5 0,1 1,21 0a10.5,10.5 0,1 1,-21 0" />
+
+        <!-- Rear fender -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="4"
+            android:strokeLineCap="round"
+            android:pathData="M25,65 C28,59 33,55.5 39,54.5" />
+
+        <!-- Swingarm and frame -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M34,71 L48,69 L51,60" />
+
+        <!-- Engine -->
+        <path
+            android:fillColor="#16325C"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:pathData="M51,58.5 L63,58.5 L64,66 L53,67 Z" />
+
+        <!-- Seat -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:pathData="M42,56.5 L55,55.5" />
+
+        <!-- Fuel tank -->
+        <path
+            android:fillColor="#4D8DFF"
+            android:pathData="M54,57 C54,50 58,46.5 63,46 C69,45.5 71.5,49 71,55 C66,58.5 59,59 54,57 Z" />
+
+        <!-- Fork -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="4.5"
+            android:strokeLineCap="round"
+            android:pathData="M74,71 L66.5,49" />
+
+        <!-- Handlebar -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="4.5"
+            android:strokeLineCap="round"
+            android:pathData="M66.5,49 L73.5,44" />
+
+        <!-- Headlight bracket -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M68,50 L70,51" />
+
+        <!-- Round headlight -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#F5F8FF"
+            android:strokeWidth="2.4"
+            android:pathData="M73,51.5m-3.2,0a3.2,3.2 0,1 1,6.4 0a3.2,3.2 0,1 1,-6.4 0" />
+    </group>
 </vector>

@@ -17,6 +17,7 @@
     <string name="action_save">Save</string>
     <string name="action_connect">Connect</string>
     <string name="action_disconnect">Disconnect</string>
+    <string name="hero_photo">Yamaha XSR 155</string>
     <string name="action_retry">Retry</string>
     <string name="action_delete">Delete</string>
     <string name="action_share">Share</string>

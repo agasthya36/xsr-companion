@@ -16,44 +16,125 @@
         android:paddingTop="20dp"
         android:paddingBottom="28dp">
 
-        <!-- Header -->
-        <LinearLayout
+        <!-- Hero -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardHero"
+            style="@style/Widget.Xsr.Card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="232dp"
+            app:cardCornerRadius="26dp"
+            app:strokeWidth="0dp">
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <ImageView
+                    android:id="@+id/imgHero"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/hero_photo"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/xsr_hero" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_hero_scrim" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="YAMAHA"
-                    android:textAppearance="@style/TextAppearance.Xsr.Label"
-                    android:textColor="@color/primary" />
+                    android:layout_gravity="top"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="18dp"
+                    android:paddingTop="15dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.2"
+                        android:text="YAMAHA"
+                        android:textColor="#BFD3FF"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="XSR 155"
+                        android:textColor="@color/text_primary"
+                        android:textSize="27sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="XSR 155"
-                    android:textColor="@color/text_primary"
-                    android:textSize="30sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                    android:layout_gravity="bottom"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="15dp"
+                    android:paddingBottom="13dp">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnConnect"
-                style="@style/Widget.Xsr.Button"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/action_connect"
-                app:icon="@drawable/ic_bluetooth"
-                app:iconSize="18dp" />
-        </LinearLayout>
+                    <View
+                        android:id="@+id/statusDot"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/bg_status_dot" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="Disconnected"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvDeviceName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="No CCU paired"
+                            android:textColor="#C4CCDA"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvBattery"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="9dp"
+                        android:text="--%"
+                        android:textColor="#D7DEEA"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnConnect"
+                        style="@style/Widget.Xsr.Button"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="14dp"
+                        android:text="@string/action_connect"
+                        android:textSize="12sp"
+                        app:icon="@drawable/ic_bluetooth"
+                        app:iconSize="16dp" />
+                </LinearLayout>
+            </FrameLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Permission banner -->
         <com.google.android.material.card.MaterialCardView
@@ -94,64 +175,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:text="@string/perm_grant" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Connection card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/cardConnection"
-            style="@style/Widget.Xsr.Card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="@dimen/card_pad"
-                android:paddingVertical="14dp">
-
-                <View
-                    android:id="@+id/statusDot"
-                    android:layout_width="10dp"
-                    android:layout_height="10dp"
-                    android:background="@drawable/bg_status_dot" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Disconnected"
-                        android:textColor="@color/text_primary"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tvDeviceName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:text="No CCU paired"
-                        android:textAppearance="@style/TextAppearance.Xsr.Caption" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvBattery"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="--%"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
