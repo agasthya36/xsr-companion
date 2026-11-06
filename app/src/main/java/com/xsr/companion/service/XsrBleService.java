@@ -1269,29 +1269,25 @@ public class XsrBleService extends Service {
 
         double dtSec = Math.min(5.0, Math.max(0.0, dtMs / 1000.0));
         if (dtSec > 0.05) {
-            int rpm;
-            double throttle;
-            int airTemp;
-            double pressure;
             int speed;
             int coolant;
+            double injection;
             synchronized (pendingTelemetry) {
-                rpm = pendingTelemetry.engineRpm;
-                throttle = pendingTelemetry.throttlePct;
-                airTemp = pendingTelemetry.airTemp;
-                pressure = pendingTelemetry.atmosphericPressure;
                 speed = pendingTelemetry.speedKmh;
                 coolant = pendingTelemetry.coolantTemp;
+                injection = pendingTelemetry.fuelInjection;
             }
 
-            double fuelRate = YamahaProtocol.calculateFuelRateLh(rpm, throttle, airTemp, pressure);
-            double mileage = YamahaProtocol.calculateInstantMileageKmL(speed, fuelRate, throttle);
+            // Same local path as the official app: 0x0300000E injection is
+            // already scaled to mL/s, so L/h = injection x 3.6.
+            double fuelRate = YamahaProtocol.calculateFuelRateLh(injection);
+            double mileage = YamahaProtocol.calculateInstantMileageKmL(speed, fuelRate);
 
             synchronized (pendingTelemetry) {
                 pendingTelemetry.fuelConsumptionRateLh = fuelRate;
                 pendingTelemetry.instantMileageKmL = mileage;
-                if (rpm > 0 && fuelRate > 0) {
-                    double litres = fuelRate * dtSec / 3600.0;
+                if (injection > 0.0) {
+                    double litres = YamahaProtocol.calculateFuelUsedL(injection, dtSec);
                     unsavedFuelL += litres;
                     if (currentRideId > 0) rideFuelL += litres;
                 }

@@ -93,22 +93,50 @@ public class YamahaProtocolTest {
     }
 
     @Test
-    public void fuelRateScalesWithRpmAndThrottle() {
-        double idle = YamahaProtocol.calculateFuelRateLh(1500, 0, 30, 101.3);
-        double cruise = YamahaProtocol.calculateFuelRateLh(6000, 30, 30, 101.3);
-        double wideOpen = YamahaProtocol.calculateFuelRateLh(9000, 100, 30, 101.3);
-
-        assertEquals(0.0, YamahaProtocol.calculateFuelRateLh(0, 50, 30, 101.3), 1e-9);
-        assertTrue(idle > 0);
-        assertTrue(cruise > idle);
-        assertTrue(wideOpen > cruise);
+    public void fuelRateUsesInjectionMlPerSecond() {
+        assertEquals(0.0, YamahaProtocol.calculateFuelRateLh(0.0), 1e-9);
+        assertEquals(0.0, YamahaProtocol.calculateFuelRateLh(-2.0), 1e-9);
+        assertEquals(1.8, YamahaProtocol.calculateFuelRateLh(0.5), 1e-9);
+        assertEquals(7.2, YamahaProtocol.calculateFuelRateLh(2.0), 1e-9);
     }
 
     @Test
-    public void instantMileageHandlesStopCutoffAndDivision() {
-        assertEquals(0.0, YamahaProtocol.calculateInstantMileageKmL(0, 1.0, 50), 1e-9);
-        assertEquals(99.9, YamahaProtocol.calculateInstantMileageKmL(40, 2.0, 0.0), 1e-9);
-        assertEquals(40.0, YamahaProtocol.calculateInstantMileageKmL(60, 1.5, 30), 0.001);
+    public void fuelUsedIntegratesInjectionRate() {
+        // 0.5 mL/s for 3 s = 1.5 mL = 0.0015 L.
+        assertEquals(0.0015, YamahaProtocol.calculateFuelUsedL(0.5, 3.0), 1e-12);
+        assertEquals(0.0, YamahaProtocol.calculateFuelUsedL(0.0, 3.0), 1e-12);
+        assertEquals(0.0, YamahaProtocol.calculateFuelUsedL(0.5, 0.0), 1e-12);
+    }
+
+    @Test
+    public void instantMileageUsesInjectionFuelRate() {
+        assertEquals(0.0, YamahaProtocol.calculateInstantMileageKmL(0, 1.0), 1e-9);
+        assertEquals(999.9, YamahaProtocol.calculateInstantMileageKmL(40, 0.0), 1e-9);
+        assertEquals(40.0, YamahaProtocol.calculateInstantMileageKmL(60, 1.5), 0.001);
+        // Official app floors to one decimal and caps at 999.9.
+        assertEquals(35.2, YamahaProtocol.calculateInstantMileageKmL(60, 1.7), 0.001);
+        assertEquals(999.9, YamahaProtocol.calculateInstantMileageKmL(100, 0.0001), 1e-9);
+    }
+
+    @Test
+    public void parsesInjectionFromFullAndShortCanIds() {
+        byte[] full = {
+                YamahaProtocol.START_BYTE_56, 0x01,
+                0x03, 0x00, 0x00, 0x0E, 0x13, (byte) 0x88, // 0x0300000E = 0x1388 = 5000 -> 50 mL/s
+                0x00
+        };
+        BikeTelemetry fullTelemetry = new BikeTelemetry();
+        assertTrue(YamahaProtocol.parseIncomingPacket(full, fullTelemetry));
+        assertEquals(50.0, fullTelemetry.fuelInjection, 1e-9);
+
+        byte[] shortId = {
+                YamahaProtocol.START_BYTE_56, 0x01,
+                0x03, 0x0E, 0x13, (byte) 0x88,              // Short 0x0300000E layout
+                0x00
+        };
+        BikeTelemetry shortTelemetry = new BikeTelemetry();
+        assertTrue(YamahaProtocol.parseIncomingPacket(shortId, shortTelemetry));
+        assertEquals(50.0, shortTelemetry.fuelInjection, 1e-9);
     }
 
     @Test

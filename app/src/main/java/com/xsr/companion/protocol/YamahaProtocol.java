@@ -22,6 +22,16 @@ public final class YamahaProtocol {
     public static final byte START_BYTE_5B = (byte) 0x5B;   // 91 (Common Records)
     public static final byte GROUP_COMMON = 0x01;
 
+    /**
+     * Raw 0x0300000E injection values are hundredths of a millilitre per
+     * second, so 5000 becomes 50.0 mL/s. After this scaling the value can be
+     * converted straight to L/h (x 3.6) or integrated as L (x 0.001 x dt).
+     */
+    public static final double INJECTION_RAW_TO_ML_PER_SEC = 0.01;
+
+    /** Official app caps instantaneous economy here (km/L). */
+    public static final double MAX_INSTANT_MILEAGE_KML = 999.9;
+
     private YamahaProtocol() {}
 
     /**
@@ -278,7 +288,7 @@ public final class YamahaProtocol {
                     target.warningLamp = (data[i + 2] & 0xFF) == 1;
                 } else if (data[i] == 0x03 && data[i + 1] == 0x0E && i + 3 < data.length) {
                     int rawInj = ((data[i + 2] & 0xFF) << 8) | (data[i + 3] & 0xFF);
-                    target.fuelInjection = rawInj / 100.0;
+                    target.fuelInjection = rawInj * INJECTION_RAW_TO_ML_PER_SEC;
                 }
             }
 
@@ -290,7 +300,9 @@ public final class YamahaProtocol {
             Integer warning = findCanValue(data, 0x0300000D, 1);
             if (warning != null) target.warningLamp = warning == 1;
             Integer injection = findCanValue(data, 0x0300000E, 2);
-            if (injection != null) target.fuelInjection = injection / 100.0;
+            if (injection != null) {
+                target.fuelInjection = injection * INJECTION_RAW_TO_ML_PER_SEC;
+            }
 
             return true;
         }
@@ -304,50 +316,37 @@ public final class YamahaProtocol {
     }
 
     /**
-     * Calculates estimated fuel flow rate (litres / hour) for the Yamaha 155cc VVA engine.
-     * Uses speed-density airflow estimation tuned to the 155.1cc displacement,
-     * stoichiometric air-fuel ratio (14.7:1), gasoline density (740 g/L), and
-     * throttle-derived volumetric efficiency (VE).
+     * Converts the 0x0300000E injection rate to fuel flow in litres/hour.
+     * The scaled injection value is millilitres per second, so:
+     *   L/h = mL/s x 0.001 x 3600 = mL/s x 3.6
      */
-    public static double calculateFuelRateLh(int rpm, double throttlePct, int airTempC, double pressureKpa) {
-        if (rpm <= 0) return 0.0;
-        // Displacement: 155.1 cc = 0.1551 L
-        // 4-stroke single cylinder: 1 intake event every 2 revolutions -> rpm / 120 intake strokes / sec
-        double throttleNorm = Math.max(0.0, Math.min(100.0, throttlePct)) / 100.0;
-        // Volumetric Efficiency (VE) curve for Yamaha 155cc 4V SOHC VVA:
-        // ~0.28 at idle (closed butterfly with bypass air), up to ~0.90 at wide-open throttle (VVA cam lobe)
-        double ve = 0.28 + (0.62 * Math.pow(throttleNorm, 0.85));
-
-        // Air density (kg/m3 == g/L) adjusted for intake temperature and barometric pressure
-        double tempK = (airTempC > -20 && airTempC < 80) ? (airTempC + 273.15) : 298.15;
-        double pressKpa = (pressureKpa > 50 && pressureKpa < 120) ? pressureKpa : 101.325;
-        // Gas law: rho = P / (R_specific * T), R_specific = 287.058 J/(kg*K)
-        double airDensityGL = (pressKpa * 1000.0) / (287.058 * tempK);
-
-        // Airflow in grams/second:
-        double airFlowGs = ((rpm / 120.0) * 0.1551 * ve) * airDensityGL;
-
-        // Stoichiometric ratio for unleaded gasoline: 14.7 grams air per 1 gram fuel
-        // Density of gasoline: ~740 grams / Litre
-        // Fuel rate (L/h) = (airFlowGs / 14.7 / 740) * 3600
-        double fuelRateLh = ((airFlowGs / 14.7) / 740.0) * 3600.0;
-        return Math.max(0.0, fuelRateLh);
+    public static double calculateFuelRateLh(double fuelInjectionMlPerSec) {
+        if (!(fuelInjectionMlPerSec > 0.0)) return 0.0;
+        return fuelInjectionMlPerSec * 3.6;
     }
 
     /**
-     * Calculates instantaneous mileage in km/L from vehicle speed (km/h) and fuel rate (L/h).
-     * Accounts for overrun fuel cut-off when coasting / decelerating in gear.
+     * Fuel burned over an interval. Mirrors the official app's
+     * fuel_L = avgInjection x 0.001 x period.
      */
-    public static double calculateInstantMileageKmL(int speedKmh, double fuelRateLh, double throttlePct) {
-        if (speedKmh <= 1) return 0.0; // Stopped: 0 km/L (infinite L/100km)
-        // Fuel overrun cut-off: during deceleration with closed throttle at speed > 15 km/h
-        if (throttlePct < 1.0 && speedKmh > 15) {
-            return 99.9; // Fuel cutoff active
-        }
-        if (fuelRateLh <= 0.05) return 99.9;
+    public static double calculateFuelUsedL(double fuelInjectionMlPerSec, double dtSec) {
+        if (!(fuelInjectionMlPerSec > 0.0) || !(dtSec > 0.0)) return 0.0;
+        return fuelInjectionMlPerSec * 0.001 * dtSec;
+    }
+
+    /**
+     * Instantaneous mileage in km/L from vehicle speed and injection-derived
+     * fuel rate. The official app samples speed and injection over a 3 s
+     * window, which reduces to speed / (3.6 x injection). Results are floored
+     * to one decimal place and capped at 999.9 km/L.
+     */
+    public static double calculateInstantMileageKmL(int speedKmh, double fuelRateLh) {
+        if (speedKmh <= 1) return 0.0;
+        if (!(fuelRateLh > 0.0)) return MAX_INSTANT_MILEAGE_KML;
         double kmL = speedKmh / fuelRateLh;
-        // Do not hide genuinely poor economy behind an artificial 5 km/L floor.
-        return Math.min(99.9, Math.max(0.1, kmL));
+        if (!(kmL > 0.0)) return 0.0;
+        if (kmL > MAX_INSTANT_MILEAGE_KML) return MAX_INSTANT_MILEAGE_KML;
+        return Math.floor(kmL * 10.0) / 10.0;
     }
 
     /**

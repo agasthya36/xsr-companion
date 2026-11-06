@@ -176,7 +176,7 @@ When notifications are enabled on the NUS TX Characteristic (`...31b402635de9`),
 | `0x02000009` | Active DTC Code | UShort | Code | Active Diagnostic Trouble Code (e.g. 12, 21, 46) |
 | `0x0200000A` | Total Odometer | Double | km | Cumulative odometer distance |
 | `0x0300000D` | Warning Lamp | UByte | 0 or 1 | Check Engine warning light state |
-| `0x0300000E` | Fuel Injection | Double | Flow rate | Instantaneous injector pulse width |
+| `0x0300000E` | Fuel Injection | Double | mL/s (raw / 100) | Instantaneous injector flow rate |
 | `0x01000101` | ECU Run Time | UInt | Seconds | Total cumulative ECU power-on operating time |
 | `0x01000102` | Ignition Count | UShort | Cycles | Total engine start / ignition cycles |
 
@@ -261,16 +261,14 @@ Each item calculates `remainingKm = interval - (currentOdo - lastServiceOdo)`. B
 
 ## 10. Aggregate Stats, Fuel Economy & Real-Time Mileage Dynamics
 
-### 10.1 Real-Time Speed-Density Fuel Estimation
-The Yamaha XSR 155 (and MT-15 / R15) does not broadcast a continuous float sensor fuel level over BLE. Instead, real-time mileage and fuel flow are computed using high-accuracy speed-density calculations calibrated for the 155.1cc VVA engine:
+### 10.1 Real-Time Fuel Injection & Mileage
+The XSR 155 does not broadcast a continuous float sensor fuel level over BLE. It does broadcast the ECU's instantaneous fuel injection rate in CAN slot `0x0300000E`. The official app uses that local value directly — no speed-density model and no cloud round trip:
 
-$$\text{Fuel Flow Rate } (L/h) = \frac{\left(\frac{\text{RPM}}{120} \times 0.1551 \times \text{VE}(\text{throttle}) \times \rho_{\text{air}}(\text{temp}, \text{pressure})\right)}{14.7 \times 740} \times 3600$$
+$$\text{Fuel Rate } (L/h) = \text{Injection } (mL/s) \times 3.6$$
 
-Where:
-* **Volumetric Efficiency (VE)**: Modeled dynamically across throttle positions: $\text{VE} = 0.28 + 0.62 \times \text{Throttle}^{0.85}$ (accounting for bypass idle air and high-lift VVA cam lobe activation).
-* **Air Density ($\rho_{\text{air}}$)**: Corrected via ambient temperature (`0x02000006`) and barometric pressure (`0x02000007`).
-* **Fuel Cutoff Detection**: When coasting in-gear with throttle $< 1.0\%$ and speed $> 15\text{ km/h}$, fuel cut is triggered and instantaneous mileage peaks at $99.9\text{ km/L}$.
-* **Instantaneous Mileage**: $\text{Speed (km/h)} / \text{Fuel Rate (L/h)}$.
+* **Injection Scaling**: `0x0300000E` is reported in hundredths of a millilitre per second (e.g. `5000` -> `50.0 mL/s`).
+* **Instantaneous Mileage**: $\text{Speed (km/h)} / \text{Fuel Rate (L/h)}$ over the official 3-second sample window, capped at **999.9 km/L** and floored to one decimal place.
+* **Trip Fuel Integration**: Accumulates $\int \text{Injection} \times 0.001 \times dt$ (mL -> L) locally for the ride and tank estimates.
 
 ### 10.2 Fuel Capacity & Range Tracking
 * **Factory Tank Capacity**: 10.0 Litres (Reserve: 2.0 Litres).

@@ -11,6 +11,7 @@ public class BikeTelemetry {
     public boolean warningLamp = false;
     public int dtcCount = 0;
     public int dtcCode = 0;
+    /** Instantaneous fuel injection from 0x0300000E, in millilitres/second. */
     public double fuelInjection = 0.0;
     public long ecuTotalTimeSec = 0;
     public int ignitionCycles = 0;
