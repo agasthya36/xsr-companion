@@ -24,7 +24,10 @@ import androidx.lifecycle.Lifecycle;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.xsr.companion.R;
+import com.xsr.companion.data.RideDatabaseHelper;
 import com.xsr.companion.service.XsrBleService;
+import com.xsr.companion.sync.AuthManager;
+import com.xsr.companion.sync.SyncScheduler;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -107,6 +110,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         handleRideExtra(getIntent());
+
+        RideDatabaseHelper.getInstance(this).ensureUuids();
+        AuthManager.getInstance(this).restoreSession();
+        SyncScheduler.scheduleDaily(this);
+        SyncScheduler.syncIfStale(this);
     }
 
     private void applyInsets() {

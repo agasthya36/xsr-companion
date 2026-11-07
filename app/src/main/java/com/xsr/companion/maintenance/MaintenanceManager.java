@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 
 import com.xsr.companion.data.RideDatabaseHelper;
 import com.xsr.companion.settings.SettingsManager;
+import com.xsr.companion.sync.SyncModels;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,7 +16,9 @@ public class MaintenanceManager {
 
     private static final String PREF_NAME = "xsr_maintenance_prefs";
     private static final String KEY_CURRENT_ODO = "current_odometer_km";
+    private static final String KEY_ODO_UPDATED_AT = "current_odometer_updated_at";
     private static final String KEY_LAST_PREFIX = "last_service_";
+    private static final String KEY_ITEM_UPDATED_PREFIX = "item_updated_";
 
     public static class ServiceItem {
         public final String id;
@@ -117,8 +120,25 @@ public class MaintenanceManager {
         if (odoKm <= 0) return;
         if (Math.abs(odoKm - currentOdometerKm) < 0.05) return;
         currentOdometerKm = odoKm;
-        prefs.edit().putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm).apply();
+        long now = System.currentTimeMillis();
+        prefs.edit()
+                .putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm)
+                .putLong(KEY_ODO_UPDATED_AT, now)
+                .apply();
         baselineIfNeeded(odoKm);
+    }
+
+    public synchronized long getOdometerUpdatedAt() {
+        return prefs.getLong(KEY_ODO_UPDATED_AT, 0L);
+    }
+
+    public synchronized void applyOdometer(double odoKm, long updatedAt) {
+        double maxOdo = Math.max(currentOdometerKm, odoKm);
+        currentOdometerKm = maxOdo;
+        prefs.edit()
+                .putFloat(KEY_CURRENT_ODO, (float) currentOdometerKm)
+                .putLong(KEY_ODO_UPDATED_AT, updatedAt)
+                .apply();
     }
 
     /**
@@ -178,18 +198,21 @@ public class MaintenanceManager {
      * repopulate the display, but all items stay "never serviced".
      */
     public synchronized void clearAllToNever() {
+        long now = System.currentTimeMillis();
         SharedPreferences.Editor editor = prefs.edit();
         for (ServiceItem item : items) {
             item.lastServiceOdoKm = 0.0;
             item.lastServiceTime = 0L;
             editor.putFloat(KEY_LAST_PREFIX + item.id, 0.0f);
             editor.putLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
+            editor.putLong(KEY_ITEM_UPDATED_PREFIX + item.id, now);
         }
         editor.putFloat(KEY_CURRENT_ODO, 0.0f);
+        editor.putLong(KEY_ODO_UPDATED_AT, now);
         editor.apply();
         currentOdometerKm = 0.0;
         settings.clearMaintenanceBaselined();
-        db.insertServiceLog("reset", System.currentTimeMillis(), 0.0,
+        db.insertServiceLog("reset", now, 0.0,
                 "All services cleared to never serviced", 0.0);
     }
 
@@ -200,17 +223,19 @@ public class MaintenanceManager {
      */
     public synchronized void resetAllToZero() {
         double origin = Math.max(0.0, getCurrentOdometer());
+        long now = System.currentTimeMillis();
         SharedPreferences.Editor editor = prefs.edit();
         for (ServiceItem item : items) {
             item.lastServiceOdoKm = origin;
             item.lastServiceTime = 0L;
             editor.putFloat(KEY_LAST_PREFIX + item.id, (float) origin);
             editor.putLong(KEY_LAST_PREFIX + item.id + "_time", 0L);
+            editor.putLong(KEY_ITEM_UPDATED_PREFIX + item.id, now);
         }
         editor.apply();
         settings.setMaintenanceBaselined();
         if (origin > 0) {
-            db.insertServiceLog("reset", System.currentTimeMillis(), origin,
+            db.insertServiceLog("reset", now, origin,
                     "Maintenance counters reset to current odometer", 0.0);
         }
     }
@@ -225,9 +250,11 @@ public class MaintenanceManager {
             if (item.id.equals(id)) {
                 item.lastServiceOdoKm = Math.max(0.0, odoKm);
                 item.lastServiceTime = when;
+                long now = System.currentTimeMillis();
                 prefs.edit()
                         .putFloat(KEY_LAST_PREFIX + id, (float) Math.max(0.0, odoKm))
                         .putLong(KEY_LAST_PREFIX + id + "_time", when)
+                        .putLong(KEY_ITEM_UPDATED_PREFIX + id, now)
                         .apply();
                 return;
             }
@@ -252,6 +279,7 @@ public class MaintenanceManager {
         prefs.edit()
                 .putFloat(KEY_LAST_PREFIX + id, (float) serviceOdo)
                 .putLong(KEY_LAST_PREFIX + id + "_time", now)
+                .putLong(KEY_ITEM_UPDATED_PREFIX + id, now)
                 .apply();
         db.insertServiceLog(id, now, serviceOdo, notes, cost);
     }
@@ -262,8 +290,47 @@ public class MaintenanceManager {
 
     public synchronized void setInterval(String id, int km) {
         settings.setMaintenanceIntervalKm(id, km);
+        long now = System.currentTimeMillis();
+        prefs.edit().putLong(KEY_ITEM_UPDATED_PREFIX + id, now).apply();
         for (ServiceItem item : items) {
             if (item.id.equals(id)) item.intervalKm = Math.max(50, km);
+        }
+    }
+
+    public synchronized long getItemUpdatedAt(String id) {
+        return prefs.getLong(KEY_ITEM_UPDATED_PREFIX + id, 0L);
+    }
+
+    public synchronized List<SyncModels.MaintenanceItemState> snapshotMaintenanceState() {
+        List<SyncModels.MaintenanceItemState> list = new ArrayList<>();
+        for (ServiceItem item : getItems()) {
+            long updated = getItemUpdatedAt(item.id);
+            if (updated <= 0 && item.lastServiceTime > 0) {
+                updated = item.lastServiceTime;
+            }
+            list.add(new SyncModels.MaintenanceItemState(
+                    item.id, item.lastServiceOdoKm, item.lastServiceTime, item.intervalKm, updated));
+        }
+        return list;
+    }
+
+    public synchronized void applyMaintenanceState(String itemId, double lastOdoKm, long lastTime,
+                                                   int intervalKm, long updatedAt) {
+        for (ServiceItem item : items) {
+            if (item.id.equals(itemId)) {
+                item.lastServiceOdoKm = Math.max(0.0, lastOdoKm);
+                item.lastServiceTime = lastTime;
+                if (intervalKm > 0) {
+                    item.intervalKm = Math.max(50, intervalKm);
+                    settings.setMaintenanceIntervalKm(itemId, item.intervalKm);
+                }
+                prefs.edit()
+                        .putFloat(KEY_LAST_PREFIX + itemId, (float) item.lastServiceOdoKm)
+                        .putLong(KEY_LAST_PREFIX + itemId + "_time", item.lastServiceTime)
+                        .putLong(KEY_ITEM_UPDATED_PREFIX + itemId, updatedAt)
+                        .apply();
+                return;
+            }
         }
     }
 

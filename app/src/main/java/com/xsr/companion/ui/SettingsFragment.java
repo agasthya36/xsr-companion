@@ -30,11 +30,17 @@ import com.xsr.companion.maintenance.FuelManager;
 import com.xsr.companion.service.XsrBleService;
 import com.xsr.companion.settings.SettingsManager;
 import com.xsr.companion.settings.Units;
+import com.xsr.companion.sync.AuthManager;
+import com.xsr.companion.sync.SyncManager;
+import com.xsr.companion.sync.SyncScheduler;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import android.widget.LinearLayout;
 
 public class SettingsFragment extends BaseFragment {
 
@@ -48,6 +54,12 @@ public class SettingsFragment extends BaseFragment {
     private MaterialButtonToggleGroup gpsModeGroup;
     private MaterialButton btnToggleConnection, btnTankCapacity, btnReserve,
             btnOverspeedLimit, btnCoolantLimit;
+
+    private AuthManager auth;
+    private SyncManager sync;
+    private LinearLayout groupCloudSignedOut, groupCloudSignedIn;
+    private TextView tvCloudEmail, tvCloudLastSync, tvCloudSyncError;
+    private MaterialButton btnCloudSignIn, btnCloudSyncNow, btnCloudRestore, btnCloudSignOut;
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
@@ -64,6 +76,8 @@ public class SettingsFragment extends BaseFragment {
         settings = SettingsManager.get(requireContext());
         db = RideDatabaseHelper.getInstance(requireContext());
         fuelManager = new FuelManager(requireContext());
+        auth = AuthManager.getInstance(requireContext());
+        sync = SyncManager.getInstance(requireContext());
         servicePrefs = requireContext().getSharedPreferences(
                 XsrBleService.PREFS_NAME, Context.MODE_PRIVATE);
 
@@ -91,6 +105,7 @@ public class SettingsFragment extends BaseFragment {
         bindFuel();
         bindAlerts();
         bindDataActions(view);
+        bindCloudBackup(view);
 
         refreshValues();
     }
@@ -320,6 +335,129 @@ public class SettingsFragment extends BaseFragment {
                 : "Allow all the time to record GPS on background rides");
 
         updateConnectionState();
+        updateCloudBackupUi();
+    }
+
+    private void bindCloudBackup(View view) {
+        groupCloudSignedOut = view.findViewById(R.id.groupCloudSignedOut);
+        groupCloudSignedIn = view.findViewById(R.id.groupCloudSignedIn);
+        tvCloudEmail = view.findViewById(R.id.tvCloudEmail);
+        tvCloudLastSync = view.findViewById(R.id.tvCloudLastSync);
+        tvCloudSyncError = view.findViewById(R.id.tvCloudSyncError);
+        btnCloudSignIn = view.findViewById(R.id.btnCloudSignIn);
+        btnCloudSyncNow = view.findViewById(R.id.btnCloudSyncNow);
+        btnCloudRestore = view.findViewById(R.id.btnCloudRestore);
+        btnCloudSignOut = view.findViewById(R.id.btnCloudSignOut);
+
+        btnCloudSignIn.setOnClickListener(v -> {
+            CloudSyncDialogFragment dialog = CloudSyncDialogFragment.newInstance();
+            dialog.setOnSyncCompletedListener(this::updateCloudBackupUi);
+            dialog.show(getParentFragmentManager(), "cloud_sync");
+        });
+
+        btnCloudSyncNow.setOnClickListener(v -> {
+            btnCloudSyncNow.setEnabled(false);
+            btnCloudSyncNow.setText("Syncing...");
+            sync.syncNow(result -> {
+                if (!isAdded()) return;
+                btnCloudSyncNow.setEnabled(true);
+                btnCloudSyncNow.setText("Sync now");
+                updateCloudBackupUi();
+                if (result.success) {
+                    Toast.makeText(requireContext(), "Sync completed", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(requireContext(), "Sync failed: " + result.errorMessage, Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+
+        btnCloudRestore.setOnClickListener(v -> {
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle("Restore from cloud?")
+                    .setMessage("This will pull your rides, fuel, and service records from the cloud and merge them with this device.")
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .setPositiveButton("Restore", (d, w) -> {
+                        btnCloudRestore.setEnabled(false);
+                        btnCloudRestore.setText("Restoring...");
+                        sync.firstSync(result -> {
+                            if (!isAdded()) return;
+                            btnCloudRestore.setEnabled(true);
+                            btnCloudRestore.setText("Restore");
+                            updateCloudBackupUi();
+                            if (result.success) {
+                                Toast.makeText(requireContext(), result.getSummaryMessage(), Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(requireContext(), "Restore failed: " + result.errorMessage, Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    })
+                    .show();
+        });
+
+        btnCloudSignOut.setOnClickListener(v -> {
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle("Sign out?")
+                    .setMessage("Your local data will remain intact on this phone. Automatic cloud backup will pause until you sign in again.")
+                    .setNegativeButton(R.string.action_cancel, null)
+                    .setPositiveButton("Sign out", (d, w) -> {
+                        auth.signOut(new AuthManager.AuthCallback() {
+                            @Override
+                            public void onSuccess(String message) {
+                                if (!isAdded()) return;
+                                SyncScheduler.cancel(requireContext());
+                                updateCloudBackupUi();
+                                Toast.makeText(requireContext(), "Signed out", Toast.LENGTH_SHORT).show();
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                if (!isAdded()) return;
+                                updateCloudBackupUi();
+                            }
+                        });
+                    })
+                    .show();
+        });
+
+        updateCloudBackupUi();
+    }
+
+    private void updateCloudBackupUi() {
+        if (!isAdded() || getView() == null) return;
+        boolean signedIn = auth.isSignedIn();
+        groupCloudSignedOut.setVisibility(signedIn ? View.GONE : View.VISIBLE);
+        groupCloudSignedIn.setVisibility(signedIn ? View.VISIBLE : View.GONE);
+
+        if (signedIn) {
+            tvCloudEmail.setText(auth.getEmail() != null ? auth.getEmail() : "Signed in");
+
+            long lastSync = auth.getLastSyncAt();
+            if (lastSync > 0) {
+                long diffMs = System.currentTimeMillis() - lastSync;
+                String relative;
+                if (diffMs < 60_000) {
+                    relative = "Just now";
+                } else if (diffMs < 3600_000) {
+                    relative = (diffMs / 60_000) + " minutes ago";
+                } else if (diffMs < 86400_000) {
+                    relative = (diffMs / 3600_000) + " hours ago";
+                } else {
+                    SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault());
+                    relative = sdf.format(new Date(lastSync));
+                }
+                tvCloudLastSync.setText("Last synced: " + relative);
+            } else {
+                tvCloudLastSync.setText("Last synced: Never");
+            }
+
+            String error = auth.getLastSyncError();
+            if ("FAILED".equals(auth.getLastSyncStatus()) && error != null && !error.isEmpty()) {
+                tvCloudSyncError.setVisibility(View.VISIBLE);
+                tvCloudSyncError.setText("Last sync failed: " + error);
+            } else {
+                tvCloudSyncError.setVisibility(View.GONE);
+            }
+        }
     }
 
     private void updateConnectionState() {

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvSyncTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Cloud backup"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <!-- Error message banner -->
+    <TextView
+        android:id="@+id/tvSyncError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="#FF5252"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <!-- Step 1: Email -->
+    <LinearLayout
+        android:id="@+id/groupEmail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enter your email to sign in or create an account. A 6-digit verification code will be sent to your inbox."
+            android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/emailLayout"
+            style="@style/Widget.Xsr.TextInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:hint="Email address">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputEmail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textEmailAddress"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEmailCancel"
+                style="@style/Widget.Xsr.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/action_cancel" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSendCode"
+                style="@style/Widget.Xsr.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="Send code" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Step 2: Code Verification -->
+    <LinearLayout
+        android:id="@+id/groupCode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvCodePrompt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enter the verification code sent to your email."
+            android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/codeLayout"
+            style="@style/Widget.Xsr.TextInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:hint="Verification code">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputCode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:letterSpacing="0.15"
+                android:maxLength="10"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnResendCode"
+                style="@style/Widget.Xsr.Button.Outlined"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="Resend" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnVerifyCode"
+                style="@style/Widget.Xsr.Button"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:text="Verify" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvChangeEmail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="12dp"
+            android:padding="8dp"
+            android:text="Use a different email"
+            android:textColor="@color/primary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Step 3: In-flight progress -->
+    <LinearLayout
+        android:id="@+id/groupProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="48dp"
+            android:layout_height="48dp" />
+
+        <TextView
+            android:id="@+id/tvProgressMsg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Connecting..."
+            android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+    </LinearLayout>
+
+    <!-- Step 4: Sync Result -->
+    <LinearLayout
+        android:id="@+id/groupResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvResultMsg"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnResultDone"
+            style="@style/Widget.Xsr.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Done" />
+    </LinearLayout>
+
+</LinearLayout>

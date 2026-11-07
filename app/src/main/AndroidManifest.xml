@@ -68,6 +68,11 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location" />
 
+        <service
+            android:name=".sync.SyncJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <provider
             android:name=".data.RideFileProvider"
             android:authorities="${applicationId}.fileprovider"

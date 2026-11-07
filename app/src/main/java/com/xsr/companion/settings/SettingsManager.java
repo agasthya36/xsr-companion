@@ -3,6 +3,9 @@ package com.xsr.companion.settings;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * Central place for every user-tunable value. All values are stored in metric
  * units; the UI converts them for display.
@@ -30,6 +33,7 @@ public class SettingsManager {
     public static final String KEY_FIRST_RUN = "first_run_done";
     public static final String KEY_BASELINED = "maintenance_baselined";
     public static final String KEY_MAINTENANCE_INTERVAL_PREFIX = "interval_";
+    public static final String KEY_SETTINGS_UPDATED_AT = "settings_updated_at";
 
     public static final String UNITS_METRIC = "metric";
     public static final String UNITS_IMPERIAL = "imperial";
@@ -54,6 +58,10 @@ public class SettingsManager {
         return prefs;
     }
 
+    private SharedPreferences.Editor editWithTimestamp() {
+        return prefs.edit().putLong(KEY_SETTINGS_UPDATED_AT, System.currentTimeMillis());
+    }
+
     public boolean isImperial() {
         return UNITS_IMPERIAL.equals(prefs.getString(KEY_UNITS, UNITS_METRIC));
     }
@@ -63,7 +71,7 @@ public class SettingsManager {
     }
 
     public void setImperial(boolean imperial) {
-        prefs.edit().putString(KEY_UNITS, imperial ? UNITS_IMPERIAL : UNITS_METRIC).apply();
+        editWithTimestamp().putString(KEY_UNITS, imperial ? UNITS_IMPERIAL : UNITS_METRIC).apply();
     }
 
     public float getTankCapacityL() {
@@ -71,7 +79,7 @@ public class SettingsManager {
     }
 
     public void setTankCapacityL(float litres) {
-        prefs.edit().putFloat(KEY_TANK_CAPACITY, Math.max(1f, litres)).apply();
+        editWithTimestamp().putFloat(KEY_TANK_CAPACITY, Math.max(1f, litres)).apply();
     }
 
     public float getReserveL() {
@@ -79,7 +87,7 @@ public class SettingsManager {
     }
 
     public void setReserveL(float litres) {
-        prefs.edit().putFloat(KEY_RESERVE, Math.max(0f, litres)).apply();
+        editWithTimestamp().putFloat(KEY_RESERVE, Math.max(0f, litres)).apply();
     }
 
     public boolean isAutoConnect() {
@@ -87,7 +95,7 @@ public class SettingsManager {
     }
 
     public void setAutoConnect(boolean enabled) {
-        prefs.edit().putBoolean(KEY_AUTO_CONNECT, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_AUTO_CONNECT, enabled).apply();
     }
 
     /** Keep a low-power BLE connection request open even when the app is closed. */
@@ -105,35 +113,35 @@ public class SettingsManager {
     }
 
     public void setGpsBatterySaver(boolean enabled) {
-        prefs.edit().putBoolean(KEY_GPS_SAVER, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_GPS_SAVER, enabled).apply();
     }
 
     public void setAlertOverspeed(boolean enabled) {
-        prefs.edit().putBoolean(KEY_ALERT_OVERSPEED, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_ALERT_OVERSPEED, enabled).apply();
     }
 
     public void setOverspeedKmh(int kmh) {
-        prefs.edit().putInt(KEY_OVERSPEED_KMH, Math.max(20, kmh)).apply();
+        editWithTimestamp().putInt(KEY_OVERSPEED_KMH, Math.max(20, kmh)).apply();
     }
 
     public void setAlertCoolant(boolean enabled) {
-        prefs.edit().putBoolean(KEY_ALERT_COOLANT, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_ALERT_COOLANT, enabled).apply();
     }
 
     public void setCoolantLimitC(int celsius) {
-        prefs.edit().putInt(KEY_COOLANT_C, Math.max(80, celsius)).apply();
+        editWithTimestamp().putInt(KEY_COOLANT_C, Math.max(80, celsius)).apply();
     }
 
     public void setAlertLowFuel(boolean enabled) {
-        prefs.edit().putBoolean(KEY_ALERT_LOW_FUEL, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_ALERT_LOW_FUEL, enabled).apply();
     }
 
     public void setAlertService(boolean enabled) {
-        prefs.edit().putBoolean(KEY_ALERT_SERVICE, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_ALERT_SERVICE, enabled).apply();
     }
 
     public void setAlertColdEngine(boolean enabled) {
-        prefs.edit().putBoolean(KEY_ALERT_COLD, enabled).apply();
+        editWithTimestamp().putBoolean(KEY_ALERT_COLD, enabled).apply();
     }
 
     public boolean alertOverspeed() {
@@ -200,5 +208,53 @@ public class SettingsManager {
 
     public void clearMaintenanceBaselined() {
         prefs.edit().putBoolean(KEY_BASELINED, false).apply();
+    }
+
+    public long getSettingsUpdatedAt() {
+        return prefs.getLong(KEY_SETTINGS_UPDATED_AT, 0L);
+    }
+
+    public JSONObject snapshotWhitelisted() {
+        JSONObject obj = new JSONObject();
+        try {
+            obj.put(KEY_UNITS, prefs.getString(KEY_UNITS, UNITS_METRIC));
+            obj.put(KEY_TANK_CAPACITY, (double) prefs.getFloat(KEY_TANK_CAPACITY, 10.0f));
+            obj.put(KEY_RESERVE, (double) prefs.getFloat(KEY_RESERVE, 2.0f));
+            obj.put(KEY_AUTO_CONNECT, prefs.getBoolean(KEY_AUTO_CONNECT, true));
+            obj.put(KEY_GPS_SAVER, prefs.getBoolean(KEY_GPS_SAVER, false));
+            obj.put(KEY_ALERT_OVERSPEED, prefs.getBoolean(KEY_ALERT_OVERSPEED, false));
+            obj.put(KEY_OVERSPEED_KMH, prefs.getInt(KEY_OVERSPEED_KMH, 80));
+            obj.put(KEY_ALERT_COOLANT, prefs.getBoolean(KEY_ALERT_COOLANT, true));
+            obj.put(KEY_COOLANT_C, prefs.getInt(KEY_COOLANT_C, 105));
+            obj.put(KEY_ALERT_LOW_FUEL, prefs.getBoolean(KEY_ALERT_LOW_FUEL, true));
+            obj.put(KEY_ALERT_SERVICE, prefs.getBoolean(KEY_ALERT_SERVICE, true));
+            obj.put(KEY_ALERT_COLD, prefs.getBoolean(KEY_ALERT_COLD, false));
+            obj.put(KEY_FOREGROUND_MS, prefs.getLong(KEY_FOREGROUND_MS, 2000L));
+            obj.put(KEY_BACKGROUND_MS, prefs.getLong(KEY_BACKGROUND_MS, 5000L));
+            obj.put(KEY_KEEP_LOGS, prefs.getBoolean(KEY_KEEP_LOGS, false));
+        } catch (JSONException ignored) {}
+        return obj;
+    }
+
+    public synchronized void applySnapshot(JSONObject data, long remoteUpdatedAt) {
+        if (data == null) return;
+        SharedPreferences.Editor editor = prefs.edit();
+        if (data.has(KEY_UNITS)) editor.putString(KEY_UNITS, data.optString(KEY_UNITS, UNITS_METRIC));
+        if (data.has(KEY_TANK_CAPACITY)) editor.putFloat(KEY_TANK_CAPACITY, (float) data.optDouble(KEY_TANK_CAPACITY, 10.0));
+        if (data.has(KEY_RESERVE)) editor.putFloat(KEY_RESERVE, (float) data.optDouble(KEY_RESERVE, 2.0));
+        if (data.has(KEY_AUTO_CONNECT)) editor.putBoolean(KEY_AUTO_CONNECT, data.optBoolean(KEY_AUTO_CONNECT, true));
+        if (data.has(KEY_GPS_SAVER)) editor.putBoolean(KEY_GPS_SAVER, data.optBoolean(KEY_GPS_SAVER, false));
+        if (data.has(KEY_ALERT_OVERSPEED)) editor.putBoolean(KEY_ALERT_OVERSPEED, data.optBoolean(KEY_ALERT_OVERSPEED, false));
+        if (data.has(KEY_OVERSPEED_KMH)) editor.putInt(KEY_OVERSPEED_KMH, data.optInt(KEY_OVERSPEED_KMH, 80));
+        if (data.has(KEY_ALERT_COOLANT)) editor.putBoolean(KEY_ALERT_COOLANT, data.optBoolean(KEY_ALERT_COOLANT, true));
+        if (data.has(KEY_COOLANT_C)) editor.putInt(KEY_COOLANT_C, data.optInt(KEY_COOLANT_C, 105));
+        if (data.has(KEY_ALERT_LOW_FUEL)) editor.putBoolean(KEY_ALERT_LOW_FUEL, data.optBoolean(KEY_ALERT_LOW_FUEL, true));
+        if (data.has(KEY_ALERT_SERVICE)) editor.putBoolean(KEY_ALERT_SERVICE, data.optBoolean(KEY_ALERT_SERVICE, true));
+        if (data.has(KEY_ALERT_COLD)) editor.putBoolean(KEY_ALERT_COLD, data.optBoolean(KEY_ALERT_COLD, false));
+        if (data.has(KEY_FOREGROUND_MS)) editor.putLong(KEY_FOREGROUND_MS, data.optLong(KEY_FOREGROUND_MS, 2000L));
+        if (data.has(KEY_BACKGROUND_MS)) editor.putLong(KEY_BACKGROUND_MS, data.optLong(KEY_BACKGROUND_MS, 5000L));
+        if (data.has(KEY_KEEP_LOGS)) editor.putBoolean(KEY_KEEP_LOGS, data.optBoolean(KEY_KEEP_LOGS, false));
+        editor.putLong(KEY_SETTINGS_UPDATED_AT, remoteUpdatedAt);
+        editor.apply();
     }
 }

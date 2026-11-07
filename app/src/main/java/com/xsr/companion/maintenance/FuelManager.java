@@ -23,6 +23,7 @@ public class FuelManager {
     public static final String PREF_LAST_REFUEL_ODO = "fuel_last_refuel_odo";
     /** Bumped whenever the rider changes the estimate (refuel / cap change). */
     public static final String PREF_FUEL_REVISION = "fuel_revision";
+    public static final String PREF_FUEL_UPDATED_AT = "fuel_updated_at";
 
     public static final float DEFAULT_TANK_CAPACITY_L = 10.0f;
     public static final float RESERVE_CAPACITY_L = 2.0f;
@@ -55,6 +56,7 @@ public class FuelManager {
                 .putFloat(PREF_FUEL_REMAINING,
                         (float) Math.max(0.0, Math.min(getTankCapacityL(), litres)))
                 .putInt(PREF_FUEL_REVISION, getRevision() + 1)
+                .putLong(PREF_FUEL_UPDATED_AT, System.currentTimeMillis())
                 .apply();
     }
 
@@ -106,6 +108,7 @@ public class FuelManager {
                 .putFloat(PREF_FUEL_REMAINING, newRemaining)
                 .putFloat(PREF_FUEL_CONSUMED_SINCE_REFUEL, (float) (currentSinceRefuel + litresConsumed))
                 .putFloat(PREF_FUEL_LIFETIME_CONSUMED, (float) (currentLifetime + litresConsumed))
+                .putLong(PREF_FUEL_UPDATED_AT, System.currentTimeMillis())
                 .apply();
     }
 
@@ -128,18 +131,49 @@ public class FuelManager {
             newRemaining = Math.min(cap, (float) (current + Math.max(0, litresAdded)));
         }
 
+        long now = System.currentTimeMillis();
         SharedPreferences.Editor editor = prefs.edit()
                 .putFloat(PREF_FUEL_REMAINING, newRemaining)
                 .putInt(PREF_FUEL_REVISION, getRevision() + 1)
-                .putLong(PREF_LAST_REFUEL_TIME, System.currentTimeMillis())
-                .putFloat(PREF_LAST_REFUEL_ODO, (float) currentOdo);
+                .putLong(PREF_LAST_REFUEL_TIME, now)
+                .putFloat(PREF_LAST_REFUEL_ODO, (float) currentOdo)
+                .putLong(PREF_FUEL_UPDATED_AT, now);
         if (isFull) {
             editor.putFloat(PREF_FUEL_CONSUMED_SINCE_REFUEL, 0.0f);
         }
         editor.apply();
 
-        db.insertFuelLog(System.currentTimeMillis(), currentOdo, litresForLog,
+        db.insertFuelLog(now, currentOdo, litresForLog,
                 pricePerLitre, isFull, notes);
+        cachedActualMileage = -1.0;
+    }
+
+    public long getFuelUpdatedAt() {
+        return prefs.getLong(PREF_FUEL_UPDATED_AT, 0L);
+    }
+
+    public synchronized void applyFuelState(Double remainingL, Double consumedSinceRefuelL,
+                                            Double lifetimeConsumedL, Long lastRefuelTime,
+                                            Double lastRefuelOdo, long updatedAt) {
+        SharedPreferences.Editor editor = prefs.edit();
+        if (remainingL != null) {
+            editor.putFloat(PREF_FUEL_REMAINING, (float) Math.max(0.0, Math.min(getTankCapacityL(), remainingL)));
+        }
+        if (consumedSinceRefuelL != null) {
+            editor.putFloat(PREF_FUEL_CONSUMED_SINCE_REFUEL, consumedSinceRefuelL.floatValue());
+        }
+        if (lifetimeConsumedL != null) {
+            editor.putFloat(PREF_FUEL_LIFETIME_CONSUMED, lifetimeConsumedL.floatValue());
+        }
+        if (lastRefuelTime != null) {
+            editor.putLong(PREF_LAST_REFUEL_TIME, lastRefuelTime);
+        }
+        if (lastRefuelOdo != null) {
+            editor.putFloat(PREF_LAST_REFUEL_ODO, lastRefuelOdo.floatValue());
+        }
+        editor.putLong(PREF_FUEL_UPDATED_AT, updatedAt);
+        editor.putInt(PREF_FUEL_REVISION, getRevision() + 1);
+        editor.apply();
         cachedActualMileage = -1.0;
     }
 

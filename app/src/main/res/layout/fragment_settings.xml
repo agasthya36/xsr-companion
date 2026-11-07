@@ -603,6 +603,137 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Cloud Backup -->
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.Xsr.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/card_gap">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/card_pad">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="CLOUD BACKUP"
+                    android:textAppearance="@style/TextAppearance.Xsr.SectionLabel" />
+
+                <!-- Signed Out Layout -->
+                <LinearLayout
+                    android:id="@+id/groupCloudSignedOut"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Cloud backup (optional)"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Back up rides, fuel, service and diagnostic records. Your GPS routes and GPX files stay on this phone."
+                        android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCloudSignIn"
+                        style="@style/Widget.Xsr.Button"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Sign in or create account" />
+                </LinearLayout>
+
+                <!-- Signed In Layout -->
+                <LinearLayout
+                    android:id="@+id/groupCloudSignedIn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvCloudEmail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="rider@example.com"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvCloudLastSync"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Last synced: Never"
+                        android:textAppearance="@style/TextAppearance.Xsr.Caption" />
+
+                    <TextView
+                        android:id="@+id/tvCloudSyncError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="#FF5252"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="One phone per account. Sign out on your old phone before switching."
+                        android:textAppearance="@style/TextAppearance.Xsr.Caption"
+                        android:textSize="11sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCloudSyncNow"
+                            style="@style/Widget.Xsr.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:text="Sync now" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnCloudRestore"
+                            style="@style/Widget.Xsr.Button.Outlined"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:text="Restore" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCloudSignOut"
+                        style="@style/Widget.Xsr.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Sign out"
+                        android:textColor="@color/accent_red" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- Data -->
         <com.google.android.material.card.MaterialCardView
             style="@style/Widget.Xsr.Card"

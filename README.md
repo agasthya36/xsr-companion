@@ -5,9 +5,11 @@ motorcycles that use the `SCCU1_ICE` / Y-Connect CCU. It connects over Bluetooth
 LE, reads live data from the bike, records rides, tracks fuel and service
 intervals, and explains diagnostic codes.
 
-Everything stays on the phone. There is no account, no analytics, and no
-telemetry upload. Network access is used only for map data when you open a
-recorded ride.
+Everything stays on the phone by default. There is no required account, no
+analytics, and no telemetry upload. An optional cloud backup can be enabled to
+sync ride summaries, fuel logs, service history, and bike settings across
+installs using email OTP authentication. Even with cloud backup enabled, your
+GPS routes, track points, and GPX files remain strictly on your phone.
 
 ## Features
 
@@ -16,6 +18,14 @@ recorded ride.
 - Fuel level, range, and current-ride distance, time, and mileage.
 - Connection status, battery level, and the next service item.
 - A photo of the bike with the connection controls on top.
+
+### Cloud Backup (Optional)
+- Passwordless sign-in via 6-digit email OTP.
+- Backs up ride summaries, fuel log, service records, DTC history, maintenance state, and settings.
+- Summary-only: GPS time series (`ride_points`) and GPX files are never uploaded.
+- Automatic daily background push via Android `JobScheduler`.
+- Pull-first merge on sign-in or restore on a new device.
+- Tombstone-driven deletion so deleted items are not resurrected on restore.
 
 ### Rides
 - Recording starts automatically when the bike moves.
@@ -49,13 +59,16 @@ recorded ride.
 - Optional background connection.
 - CCU passkey and alert thresholds.
 
-## Privacy
+## Privacy & Data Handling
 
-No accounts. No analytics. No trackers. No telemetry uploads.
+The app works entirely offline without an account.
 
-Rides, GPS points, fuel entries, service records, and diagnostic logs are stored
-in the app's private storage. The only network traffic is map data while a ride
-route is open. Data leaves the phone only when you share or export it.
+If you choose to enable the optional **Cloud Backup**:
+- **Uploaded**: Email address (Supabase Auth), ride summary metrics (duration, distance, top speed, average speed/RPM, fuel used), fuel logs, service history, DTC logs, odometer/fuel estimates, and non-sensitive app settings.
+- **Never uploaded**: GPS coordinates/points (`ride_points`), GPX files, `gpx_path`, BLE logs, and raw protocol frames. All location data stays strictly on your phone.
+- **Security**: Tokens are stored in Android Keystore-backed `EncryptedSharedPreferences`. Supabase Row Level Security (RLS) ensures each account accesses only its own data.
+
+If you do not sign in, zero network requests are made for backup and all data remains local.
 
 ## Requirements
 
@@ -66,6 +79,17 @@ route is open. Data leaves the phone only when you share or export it.
 Built with AGP 9.5.0, Gradle 9.8.2, Material Components 1.14.0, and Java 17.
 
 ## Build
+
+Configure Supabase credentials in `local.properties` (optional for local-only builds):
+
+```properties
+supabase.url=https://<your-project>.supabase.co
+supabase.anonKey=<your-anon-key>
+```
+
+Postgres database schema migration: `supabase/migrations/0001_init.sql`.
+
+Build debug APK:
 
 ```bash
 ./gradlew :app:assembleDebug

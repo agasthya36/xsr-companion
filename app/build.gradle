@@ -10,6 +10,14 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 }
 
+def localPropertiesFile = rootProject.file('local.properties')
+def localProperties = new Properties()
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def supabaseUrl = localProperties.getProperty('supabase.url', '')
+def supabaseAnonKey = localProperties.getProperty('supabase.anonKey', '')
+
 android {
     namespace 'com.xsr.companion'
     compileSdk 37
@@ -21,6 +29,9 @@ android {
         versionCode 4
         versionName '2.3'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+
+        buildConfigField "String", "SUPABASE_URL", "\"${supabaseUrl}\""
+        buildConfigField "String", "SUPABASE_ANON_KEY", "\"${supabaseAnonKey}\""
     }
 
     signingConfigs {
@@ -68,6 +79,8 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.2'
     implementation 'androidx.core:core-splashscreen:1.2.0'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

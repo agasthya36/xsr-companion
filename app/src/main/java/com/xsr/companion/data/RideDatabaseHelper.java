@@ -21,13 +21,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class RideDatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "xsr_rides.db";
-    private static final int DATABASE_VERSION = 2;
+    private static final int DATABASE_VERSION = 3;
 
     private static volatile RideDatabaseHelper instance;
 
@@ -50,6 +51,11 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     public static final String COL_GPX_PATH = "gpx_path";
     public static final String COL_NOTES = "notes";
 
+    public static final String COL_UUID = "uuid";
+    public static final String COL_UPDATED_AT = "updated_at";
+    public static final String COL_DELETED = "deleted";
+    public static final String COL_DIRTY = "dirty";
+
     public static final String TABLE_POINTS = "ride_points";
     public static final String COL_POINT_ID = "_id";
     public static final String COL_RIDE_ID = "ride_id";
@@ -71,6 +77,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
 
     public static class RideSummary {
         public long id;
+        public String uuid;
         public long startTime;
         public long endTime;
         public int durationSec;
@@ -87,6 +94,9 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         public double avgMileageKmL;
         public String gpxPath;
         public String notes;
+        public long updatedAt;
+        public boolean deleted;
+        public boolean dirty;
 
         public String getFormattedDate() {
             SimpleDateFormat sdf = new SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault());
@@ -140,6 +150,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
 
     public static class FuelLogEntry {
         public long id;
+        public String uuid;
         public long timestamp;
         public double odometerKm;
         public double litres;
@@ -147,24 +158,35 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         public double totalCost;
         public boolean isFull;
         public String notes;
+        public long updatedAt;
+        public boolean deleted;
+        public boolean dirty;
     }
 
     public static class ServiceLogEntry {
         public long id;
+        public String uuid;
         public String itemId;
         public long timestamp;
         public double odometerKm;
         public String notes;
         public double cost;
+        public long updatedAt;
+        public boolean deleted;
+        public boolean dirty;
     }
 
     public static class DtcLogEntry {
         public long id;
+        public String uuid;
         public long timestamp;
         public int code;
         public String title;
         public String severity;
         public double odometerKm;
+        public long updatedAt;
+        public boolean deleted;
+        public boolean dirty;
     }
 
     private RideDatabaseHelper(Context context) {
@@ -192,6 +214,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE " + TABLE_RIDES + " ("
                 + COL_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_UUID + " TEXT, "
                 + COL_START_TIME + " INTEGER, "
                 + COL_END_TIME + " INTEGER, "
                 + COL_DURATION_SEC + " INTEGER DEFAULT 0, "
@@ -207,7 +230,10 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
                 + COL_FUEL_USED + " REAL DEFAULT 0, "
                 + COL_AVG_MILEAGE + " REAL DEFAULT 0, "
                 + COL_GPX_PATH + " TEXT, "
-                + COL_NOTES + " TEXT"
+                + COL_NOTES + " TEXT, "
+                + COL_UPDATED_AT + " INTEGER DEFAULT 0, "
+                + COL_DELETED + " INTEGER DEFAULT 0, "
+                + COL_DIRTY + " INTEGER DEFAULT 1"
                 + ");");
 
         db.execSQL("CREATE TABLE " + TABLE_POINTS + " ("
@@ -231,19 +257,31 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     private void createSecondaryTables(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_FUEL + " ("
                 + "_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_UUID + " TEXT, "
                 + "timestamp INTEGER, odometer_km REAL, litres REAL, "
                 + "price_per_l REAL DEFAULT 0, total_cost REAL DEFAULT 0, "
-                + "is_full INTEGER DEFAULT 0, notes TEXT);");
+                + "is_full INTEGER DEFAULT 0, notes TEXT, "
+                + COL_UPDATED_AT + " INTEGER DEFAULT 0, "
+                + COL_DELETED + " INTEGER DEFAULT 0, "
+                + COL_DIRTY + " INTEGER DEFAULT 1);");
 
         db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_SERVICE + " ("
                 + "_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_UUID + " TEXT, "
                 + "item_id TEXT, timestamp INTEGER, odometer_km REAL, "
-                + "notes TEXT, cost REAL DEFAULT 0);");
+                + "notes TEXT, cost REAL DEFAULT 0, "
+                + COL_UPDATED_AT + " INTEGER DEFAULT 0, "
+                + COL_DELETED + " INTEGER DEFAULT 0, "
+                + COL_DIRTY + " INTEGER DEFAULT 1);");
 
         db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_DTC + " ("
                 + "_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COL_UUID + " TEXT, "
                 + "timestamp INTEGER, code INTEGER, title TEXT, "
-                + "severity TEXT, odometer_km REAL DEFAULT 0);");
+                + "severity TEXT, odometer_km REAL DEFAULT 0, "
+                + COL_UPDATED_AT + " INTEGER DEFAULT 0, "
+                + COL_DELETED + " INTEGER DEFAULT 0, "
+                + COL_DIRTY + " INTEGER DEFAULT 1);");
     }
 
     private void createIndexes(SQLiteDatabase db) {
@@ -254,6 +292,18 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_fuel_time ON " + TABLE_FUEL + " (timestamp)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_service_item ON " + TABLE_SERVICE + " (item_id, timestamp)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_dtc_time ON " + TABLE_DTC + " (timestamp)");
+        createSyncIndexes(db);
+    }
+
+    private void createSyncIndexes(SQLiteDatabase db) {
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_rides_uuid ON " + TABLE_RIDES + " (" + COL_UUID + ")");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_fuel_uuid ON " + TABLE_FUEL + " (" + COL_UUID + ")");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_service_uuid ON " + TABLE_SERVICE + " (" + COL_UUID + ")");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_dtc_uuid ON " + TABLE_DTC + " (" + COL_UUID + ")");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_rides_dirty ON " + TABLE_RIDES + " (" + COL_DIRTY + ") WHERE " + COL_DIRTY + " = 1");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_fuel_dirty ON " + TABLE_FUEL + " (" + COL_DIRTY + ") WHERE " + COL_DIRTY + " = 1");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_service_dirty ON " + TABLE_SERVICE + " (" + COL_DIRTY + ") WHERE " + COL_DIRTY + " = 1");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_dtc_dirty ON " + TABLE_DTC + " (" + COL_DIRTY + ") WHERE " + COL_DIRTY + " = 1");
     }
 
     @Override
@@ -276,6 +326,53 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("UPDATE " + TABLE_POINTS + " SET " + COL_HAS_GPS + "=1 WHERE "
                     + COL_LAT + " IS NOT NULL AND (" + COL_LAT + " != 0 OR " + COL_LON + " != 0)");
         }
+        if (oldVersion < 3) {
+            addSyncColumns(db, TABLE_RIDES);
+            addSyncColumns(db, TABLE_FUEL);
+            addSyncColumns(db, TABLE_SERVICE);
+            addSyncColumns(db, TABLE_DTC);
+            createSyncIndexes(db);
+            backfillUuids(db);
+        }
+    }
+
+    private void addSyncColumns(SQLiteDatabase db, String table) {
+        addColumnIfMissing(db, table, COL_UUID, "TEXT");
+        addColumnIfMissing(db, table, COL_UPDATED_AT, "INTEGER DEFAULT 0");
+        addColumnIfMissing(db, table, COL_DELETED, "INTEGER DEFAULT 0");
+        addColumnIfMissing(db, table, COL_DIRTY, "INTEGER DEFAULT 1");
+    }
+
+    private void backfillUuids(SQLiteDatabase db) {
+        backfillTableUuids(db, TABLE_RIDES, "COALESCE(" + COL_END_TIME + ", " + COL_START_TIME + ", 0)");
+        backfillTableUuids(db, TABLE_FUEL, "timestamp");
+        backfillTableUuids(db, TABLE_SERVICE, "timestamp");
+        backfillTableUuids(db, TABLE_DTC, "timestamp");
+    }
+
+    private void backfillTableUuids(SQLiteDatabase db, String table, String timeExpr) {
+        Cursor c = db.rawQuery("SELECT _id, " + timeExpr + " FROM " + table + " WHERE " + COL_UUID + " IS NULL", null);
+        if (c != null) {
+            try {
+                while (c.moveToNext()) {
+                    long id = c.getLong(0);
+                    long time = c.getLong(1);
+                    ContentValues cv = new ContentValues();
+                    cv.put(COL_UUID, UUID.randomUUID().toString());
+                    cv.put(COL_UPDATED_AT, time);
+                    cv.put(COL_DELETED, 0);
+                    cv.put(COL_DIRTY, 1);
+                    db.update(table, cv, "_id=?", new String[]{String.valueOf(id)});
+                }
+            } finally {
+                c.close();
+            }
+        }
+    }
+
+    public synchronized void ensureUuids() {
+        SQLiteDatabase db = getWritableDatabase();
+        backfillUuids(db);
     }
 
     private void addColumnIfMissing(SQLiteDatabase db, String table, String column, String type) {
@@ -293,6 +390,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     public long startNewRide(long startTime, double startOdoKm) {
         SQLiteDatabase db = getWritableDatabase();
         ContentValues cv = new ContentValues();
+        cv.put(COL_UUID, UUID.randomUUID().toString());
         cv.put(COL_START_TIME, startTime);
         cv.put(COL_END_TIME, startTime);
         cv.put(COL_DURATION_SEC, 0);
@@ -305,6 +403,9 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         cv.put(COL_START_ODO, startOdoKm);
         cv.put(COL_END_ODO, startOdoKm);
         cv.put(COL_FUEL_USED, 0.0);
+        cv.put(COL_UPDATED_AT, startTime);
+        cv.put(COL_DELETED, 0);
+        cv.put(COL_DIRTY, 1);
         return db.insert(TABLE_RIDES, null, cv);
     }
 
@@ -419,6 +520,8 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         cv.put(COL_FUEL_USED, fuelUsedL);
         cv.put(COL_AVG_MILEAGE, avgMileage);
         cv.put(COL_GPX_PATH, gpxPath);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        cv.put(COL_DIRTY, 1);
         db.update(TABLE_RIDES, cv, COL_ID + "=?", new String[]{String.valueOf(rideId)});
         return true;
     }
@@ -428,7 +531,8 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         List<Long> open = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
         Cursor c = db.query(TABLE_RIDES, new String[]{COL_ID},
-                COL_GPX_PATH + " IS NULL AND " + COL_END_TIME + " <= " + COL_START_TIME,
+                COL_GPX_PATH + " IS NULL AND " + COL_END_TIME + " <= " + COL_START_TIME
+                        + " AND " + COL_DELETED + " = 0",
                 null, null, null, COL_START_TIME + " ASC");
         if (c != null) {
             while (c.moveToNext()) open.add(c.getLong(0));
@@ -470,17 +574,30 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     }
 
     public List<RideSummary> getRecentRides(int limit) {
-        return queryRides(COL_END_TIME + ">0", COL_START_TIME + " DESC", String.valueOf(limit));
+        return queryRides(COL_END_TIME + ">0 AND " + COL_DELETED + "=0", COL_START_TIME + " DESC", String.valueOf(limit));
     }
 
     public List<RideSummary> getAllRides() {
-        return queryRides(COL_END_TIME + ">0", COL_START_TIME + " DESC", null);
+        return queryRides(COL_END_TIME + ">0 AND " + COL_DELETED + "=0", COL_START_TIME + " DESC", null);
     }
 
     public RideSummary getRide(long rideId) {
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.query(TABLE_RIDES, null, COL_ID + "=?",
+        Cursor c = db.query(TABLE_RIDES, null, COL_ID + "=? AND " + COL_DELETED + "=0",
                 new String[]{String.valueOf(rideId)}, null, null, null, "1");
+        RideSummary summary = null;
+        if (c != null) {
+            if (c.moveToFirst()) summary = readSummary(c);
+            c.close();
+        }
+        return summary;
+    }
+
+    public RideSummary getRideByUuid(String uuid) {
+        if (uuid == null) return null;
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_RIDES, null, COL_UUID + "=? AND " + COL_DELETED + "=0",
+                new String[]{uuid}, null, null, null, "1");
         RideSummary summary = null;
         if (c != null) {
             if (c.moveToFirst()) summary = readSummary(c);
@@ -492,6 +609,8 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     private RideSummary readSummary(Cursor c) {
         RideSummary s = new RideSummary();
         s.id = c.getLong(c.getColumnIndexOrThrow(COL_ID));
+        int uuidCol = c.getColumnIndex(COL_UUID);
+        if (uuidCol >= 0) s.uuid = c.getString(uuidCol);
         s.startTime = c.getLong(c.getColumnIndexOrThrow(COL_START_TIME));
         s.endTime = c.getLong(c.getColumnIndexOrThrow(COL_END_TIME));
         s.durationSec = c.getInt(c.getColumnIndexOrThrow(COL_DURATION_SEC));
@@ -508,6 +627,12 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         s.avgMileageKmL = c.getDouble(c.getColumnIndexOrThrow(COL_AVG_MILEAGE));
         s.gpxPath = c.getString(c.getColumnIndexOrThrow(COL_GPX_PATH));
         s.notes = c.getString(c.getColumnIndexOrThrow(COL_NOTES));
+        int updatedCol = c.getColumnIndex(COL_UPDATED_AT);
+        if (updatedCol >= 0) s.updatedAt = c.getLong(updatedCol);
+        int delCol = c.getColumnIndex(COL_DELETED);
+        if (delCol >= 0) s.deleted = c.getInt(delCol) == 1;
+        int dirtyCol = c.getColumnIndex(COL_DIRTY);
+        if (dirtyCol >= 0) s.dirty = c.getInt(dirtyCol) == 1;
         return s;
     }
 
@@ -531,7 +656,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
                 + "SUM(" + COL_DURATION_SEC + "), SUM(CASE WHEN " + COL_MOVING_SEC + ">0 THEN "
                 + COL_MOVING_SEC + " ELSE " + COL_DURATION_SEC + " END), MAX(" + COL_TOP_SPEED + "), "
                 + "MAX(" + COL_MAX_RPM + "), SUM(" + COL_FUEL_USED + ") FROM " + TABLE_RIDES
-                + " WHERE " + COL_DISTANCE_KM + " > 0", null);
+                + " WHERE " + COL_DISTANCE_KM + " > 0 AND " + COL_DELETED + " = 0", null);
         if (c != null) {
             if (c.moveToFirst()) {
                 stats.totalRidesCount = c.getInt(0);
@@ -565,13 +690,23 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         }
         SQLiteDatabase db = getWritableDatabase();
         db.delete(TABLE_POINTS, COL_RIDE_ID + "=?", new String[]{String.valueOf(rideId)});
-        db.delete(TABLE_RIDES, COL_ID + "=?", new String[]{String.valueOf(rideId)});
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DELETED, 1);
+        cv.put(COL_DIRTY, 1);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        cv.putNull(COL_GPX_PATH);
+        db.update(TABLE_RIDES, cv, COL_ID + "=?", new String[]{String.valueOf(rideId)});
     }
 
     public void clearAllRideData() {
         SQLiteDatabase db = getWritableDatabase();
         db.delete(TABLE_POINTS, null, null);
-        db.delete(TABLE_RIDES, null, null);
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DELETED, 1);
+        cv.put(COL_DIRTY, 1);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        cv.putNull(COL_GPX_PATH);
+        db.update(TABLE_RIDES, cv, COL_DELETED + "=0", null);
         File dir = ridesDir();
         if (dir != null && dir.exists()) {
             File[] files = dir.listFiles();
@@ -586,6 +721,7 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     public long insertFuelLog(long timestamp, double odometerKm, double litres,
                               double pricePerLitre, boolean isFull, String notes) {
         ContentValues cv = new ContentValues();
+        cv.put(COL_UUID, UUID.randomUUID().toString());
         cv.put("timestamp", timestamp);
         cv.put("odometer_km", odometerKm);
         cv.put("litres", litres);
@@ -593,26 +729,41 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
         cv.put("total_cost", pricePerLitre * litres);
         cv.put("is_full", isFull ? 1 : 0);
         cv.put("notes", notes);
+        cv.put(COL_UPDATED_AT, timestamp);
+        cv.put(COL_DELETED, 0);
+        cv.put(COL_DIRTY, 1);
         return getWritableDatabase().insert(TABLE_FUEL, null, cv);
+    }
+
+    private FuelLogEntry readFuelLogEntry(Cursor c) {
+        FuelLogEntry e = new FuelLogEntry();
+        e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
+        int uuidCol = c.getColumnIndex(COL_UUID);
+        if (uuidCol >= 0) e.uuid = c.getString(uuidCol);
+        e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
+        e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
+        e.litres = c.getDouble(c.getColumnIndexOrThrow("litres"));
+        e.pricePerLitre = c.getDouble(c.getColumnIndexOrThrow("price_per_l"));
+        e.totalCost = c.getDouble(c.getColumnIndexOrThrow("total_cost"));
+        e.isFull = c.getInt(c.getColumnIndexOrThrow("is_full")) == 1;
+        e.notes = c.getString(c.getColumnIndexOrThrow("notes"));
+        int updatedCol = c.getColumnIndex(COL_UPDATED_AT);
+        if (updatedCol >= 0) e.updatedAt = c.getLong(updatedCol);
+        int delCol = c.getColumnIndex(COL_DELETED);
+        if (delCol >= 0) e.deleted = c.getInt(delCol) == 1;
+        int dirtyCol = c.getColumnIndex(COL_DIRTY);
+        if (dirtyCol >= 0) e.dirty = c.getInt(dirtyCol) == 1;
+        return e;
     }
 
     public List<FuelLogEntry> getFuelLog(int limit) {
         List<FuelLogEntry> list = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.query(TABLE_FUEL, null, null, null, null, null,
+        Cursor c = db.query(TABLE_FUEL, null, COL_DELETED + "=0", null, null, null,
                 "timestamp DESC", limit > 0 ? String.valueOf(limit) : null);
         if (c != null) {
             while (c.moveToNext()) {
-                FuelLogEntry e = new FuelLogEntry();
-                e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
-                e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
-                e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
-                e.litres = c.getDouble(c.getColumnIndexOrThrow("litres"));
-                e.pricePerLitre = c.getDouble(c.getColumnIndexOrThrow("price_per_l"));
-                e.totalCost = c.getDouble(c.getColumnIndexOrThrow("total_cost"));
-                e.isFull = c.getInt(c.getColumnIndexOrThrow("is_full")) == 1;
-                e.notes = c.getString(c.getColumnIndexOrThrow("notes"));
-                list.add(e);
+                list.add(readFuelLogEntry(c));
             }
             c.close();
         }
@@ -649,7 +800,11 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     }
 
     public void deleteFuelLog(long id) {
-        getWritableDatabase().delete(TABLE_FUEL, "_id=?", new String[]{String.valueOf(id)});
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DELETED, 1);
+        cv.put(COL_DIRTY, 1);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        getWritableDatabase().update(TABLE_FUEL, cv, "_id=?", new String[]{String.valueOf(id)});
     }
 
     // ---------------------------------------------------------------------
@@ -658,29 +813,45 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
 
     public long insertServiceLog(String itemId, long timestamp, double odo, String notes, double cost) {
         ContentValues cv = new ContentValues();
+        cv.put(COL_UUID, UUID.randomUUID().toString());
         cv.put("item_id", itemId);
         cv.put("timestamp", timestamp);
         cv.put("odometer_km", odo);
         cv.put("notes", notes);
         cv.put("cost", cost);
+        cv.put(COL_UPDATED_AT, timestamp);
+        cv.put(COL_DELETED, 0);
+        cv.put(COL_DIRTY, 1);
         return getWritableDatabase().insert(TABLE_SERVICE, null, cv);
+    }
+
+    private ServiceLogEntry readServiceLogEntry(Cursor c) {
+        ServiceLogEntry e = new ServiceLogEntry();
+        e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
+        int uuidCol = c.getColumnIndex(COL_UUID);
+        if (uuidCol >= 0) e.uuid = c.getString(uuidCol);
+        e.itemId = c.getString(c.getColumnIndexOrThrow("item_id"));
+        e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
+        e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
+        e.notes = c.getString(c.getColumnIndexOrThrow("notes"));
+        e.cost = c.getDouble(c.getColumnIndexOrThrow("cost"));
+        int updatedCol = c.getColumnIndex(COL_UPDATED_AT);
+        if (updatedCol >= 0) e.updatedAt = c.getLong(updatedCol);
+        int delCol = c.getColumnIndex(COL_DELETED);
+        if (delCol >= 0) e.deleted = c.getInt(delCol) == 1;
+        int dirtyCol = c.getColumnIndex(COL_DIRTY);
+        if (dirtyCol >= 0) e.dirty = c.getInt(dirtyCol) == 1;
+        return e;
     }
 
     public List<ServiceLogEntry> getServiceLog(int limit) {
         List<ServiceLogEntry> list = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.query(TABLE_SERVICE, null, null, null, null, null,
+        Cursor c = db.query(TABLE_SERVICE, null, COL_DELETED + "=0", null, null, null,
                 "timestamp DESC", limit > 0 ? String.valueOf(limit) : null);
         if (c != null) {
             while (c.moveToNext()) {
-                ServiceLogEntry e = new ServiceLogEntry();
-                e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
-                e.itemId = c.getString(c.getColumnIndexOrThrow("item_id"));
-                e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
-                e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
-                e.notes = c.getString(c.getColumnIndexOrThrow("notes"));
-                e.cost = c.getDouble(c.getColumnIndexOrThrow("cost"));
-                list.add(e);
+                list.add(readServiceLogEntry(c));
             }
             c.close();
         }
@@ -688,7 +859,11 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     }
 
     public void deleteServiceLog(long id) {
-        getWritableDatabase().delete(TABLE_SERVICE, "_id=?", new String[]{String.valueOf(id)});
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DELETED, 1);
+        cv.put(COL_DIRTY, 1);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        getWritableDatabase().update(TABLE_SERVICE, cv, "_id=?", new String[]{String.valueOf(id)});
     }
 
     // ---------------------------------------------------------------------
@@ -697,29 +872,45 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
 
     public long insertDtcLog(long timestamp, int code, String title, String severity, double odo) {
         ContentValues cv = new ContentValues();
+        cv.put(COL_UUID, UUID.randomUUID().toString());
         cv.put("timestamp", timestamp);
         cv.put("code", code);
         cv.put("title", title);
         cv.put("severity", severity);
         cv.put("odometer_km", odo);
+        cv.put(COL_UPDATED_AT, timestamp);
+        cv.put(COL_DELETED, 0);
+        cv.put(COL_DIRTY, 1);
         return getWritableDatabase().insert(TABLE_DTC, null, cv);
+    }
+
+    private DtcLogEntry readDtcLogEntry(Cursor c) {
+        DtcLogEntry e = new DtcLogEntry();
+        e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
+        int uuidCol = c.getColumnIndex(COL_UUID);
+        if (uuidCol >= 0) e.uuid = c.getString(uuidCol);
+        e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
+        e.code = c.getInt(c.getColumnIndexOrThrow("code"));
+        e.title = c.getString(c.getColumnIndexOrThrow("title"));
+        e.severity = c.getString(c.getColumnIndexOrThrow("severity"));
+        e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
+        int updatedCol = c.getColumnIndex(COL_UPDATED_AT);
+        if (updatedCol >= 0) e.updatedAt = c.getLong(updatedCol);
+        int delCol = c.getColumnIndex(COL_DELETED);
+        if (delCol >= 0) e.deleted = c.getInt(delCol) == 1;
+        int dirtyCol = c.getColumnIndex(COL_DIRTY);
+        if (dirtyCol >= 0) e.dirty = c.getInt(dirtyCol) == 1;
+        return e;
     }
 
     public List<DtcLogEntry> getDtcLog(int limit) {
         List<DtcLogEntry> list = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.query(TABLE_DTC, null, null, null, null, null,
+        Cursor c = db.query(TABLE_DTC, null, COL_DELETED + "=0", null, null, null,
                 "timestamp DESC", limit > 0 ? String.valueOf(limit) : null);
         if (c != null) {
             while (c.moveToNext()) {
-                DtcLogEntry e = new DtcLogEntry();
-                e.id = c.getLong(c.getColumnIndexOrThrow("_id"));
-                e.timestamp = c.getLong(c.getColumnIndexOrThrow("timestamp"));
-                e.code = c.getInt(c.getColumnIndexOrThrow("code"));
-                e.title = c.getString(c.getColumnIndexOrThrow("title"));
-                e.severity = c.getString(c.getColumnIndexOrThrow("severity"));
-                e.odometerKm = c.getDouble(c.getColumnIndexOrThrow("odometer_km"));
-                list.add(e);
+                list.add(readDtcLogEntry(c));
             }
             c.close();
         }
@@ -727,7 +918,304 @@ public class RideDatabaseHelper extends SQLiteOpenHelper {
     }
 
     public void clearDtcLog() {
-        getWritableDatabase().delete(TABLE_DTC, null, null);
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DELETED, 1);
+        cv.put(COL_DIRTY, 1);
+        cv.put(COL_UPDATED_AT, System.currentTimeMillis());
+        getWritableDatabase().update(TABLE_DTC, cv, COL_DELETED + "=0", null);
+    }
+
+    // ---------------------------------------------------------------------
+    // Sync queries & remote apply
+    // ---------------------------------------------------------------------
+
+    public List<RideSummary> getDirtyRides() {
+        List<RideSummary> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_RIDES, null, COL_DIRTY + "=1", null, null, null, COL_START_TIME + " ASC");
+        if (c != null) {
+            while (c.moveToNext()) {
+                list.add(readSummary(c));
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public List<FuelLogEntry> getDirtyFuel() {
+        List<FuelLogEntry> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_FUEL, null, COL_DIRTY + "=1", null, null, null, "timestamp ASC");
+        if (c != null) {
+            while (c.moveToNext()) {
+                list.add(readFuelLogEntry(c));
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public List<ServiceLogEntry> getDirtyService() {
+        List<ServiceLogEntry> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_SERVICE, null, COL_DIRTY + "=1", null, null, null, "timestamp ASC");
+        if (c != null) {
+            while (c.moveToNext()) {
+                list.add(readServiceLogEntry(c));
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public List<DtcLogEntry> getDirtyDtc() {
+        List<DtcLogEntry> list = new ArrayList<>();
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.query(TABLE_DTC, null, COL_DIRTY + "=1", null, null, null, "timestamp ASC");
+        if (c != null) {
+            while (c.moveToNext()) {
+                list.add(readDtcLogEntry(c));
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public synchronized void markClean(String table, String uuid) {
+        if (table == null || uuid == null) return;
+        ContentValues cv = new ContentValues();
+        cv.put(COL_DIRTY, 0);
+        getWritableDatabase().update(table, cv, COL_UUID + "=?", new String[]{uuid});
+    }
+
+    public synchronized boolean applyRemoteRide(RideSummary remote) {
+        if (remote == null || remote.uuid == null) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor c = db.query(TABLE_RIDES, null, COL_UUID + "=?", new String[]{remote.uuid}, null, null, null, "1");
+        boolean exists = false;
+        long localUpdatedAt = -1;
+        String localGpxPath = null;
+        long localId = -1;
+        if (c != null) {
+            if (c.moveToFirst()) {
+                exists = true;
+                localId = c.getLong(c.getColumnIndexOrThrow(COL_ID));
+                int upIdx = c.getColumnIndex(COL_UPDATED_AT);
+                if (upIdx >= 0) localUpdatedAt = c.getLong(upIdx);
+                int gpxIdx = c.getColumnIndex(COL_GPX_PATH);
+                if (gpxIdx >= 0) localGpxPath = c.getString(gpxIdx);
+            }
+            c.close();
+        }
+
+        if (exists) {
+            if (remote.updatedAt > localUpdatedAt) {
+                ContentValues cv = new ContentValues();
+                cv.put(COL_START_TIME, remote.startTime);
+                cv.put(COL_END_TIME, remote.endTime);
+                cv.put(COL_DURATION_SEC, remote.durationSec);
+                cv.put(COL_MOVING_SEC, remote.movingSec);
+                cv.put(COL_DISTANCE_KM, remote.distanceKm);
+                cv.put(COL_TOP_SPEED, remote.topSpeedKmh);
+                cv.put(COL_AVG_SPEED, remote.avgSpeedKmh);
+                cv.put(COL_MAX_RPM, remote.maxRpm);
+                cv.put(COL_AVG_RPM, remote.avgRpm);
+                cv.put(COL_MAX_COOLANT, remote.maxCoolant);
+                cv.put(COL_START_ODO, remote.startOdoKm);
+                cv.put(COL_END_ODO, remote.endOdoKm);
+                cv.put(COL_FUEL_USED, remote.fuelUsedL);
+                cv.put(COL_AVG_MILEAGE, remote.avgMileageKmL);
+                cv.put(COL_NOTES, remote.notes);
+                cv.put(COL_UPDATED_AT, remote.updatedAt);
+                cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+                cv.put(COL_DIRTY, 0);
+                if (remote.deleted) {
+                    cv.putNull(COL_GPX_PATH);
+                    if (localGpxPath != null) {
+                        try { new File(localGpxPath).delete(); } catch (Exception ignored) {}
+                    }
+                    db.delete(TABLE_POINTS, COL_RIDE_ID + "=?", new String[]{String.valueOf(localId)});
+                } else if (localGpxPath != null) {
+                    cv.put(COL_GPX_PATH, localGpxPath);
+                }
+                db.update(TABLE_RIDES, cv, COL_ID + "=?", new String[]{String.valueOf(localId)});
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            ContentValues cv = new ContentValues();
+            cv.put(COL_UUID, remote.uuid);
+            cv.put(COL_START_TIME, remote.startTime);
+            cv.put(COL_END_TIME, remote.endTime);
+            cv.put(COL_DURATION_SEC, remote.durationSec);
+            cv.put(COL_MOVING_SEC, remote.movingSec);
+            cv.put(COL_DISTANCE_KM, remote.distanceKm);
+            cv.put(COL_TOP_SPEED, remote.topSpeedKmh);
+            cv.put(COL_AVG_SPEED, remote.avgSpeedKmh);
+            cv.put(COL_MAX_RPM, remote.maxRpm);
+            cv.put(COL_AVG_RPM, remote.avgRpm);
+            cv.put(COL_MAX_COOLANT, remote.maxCoolant);
+            cv.put(COL_START_ODO, remote.startOdoKm);
+            cv.put(COL_END_ODO, remote.endOdoKm);
+            cv.put(COL_FUEL_USED, remote.fuelUsedL);
+            cv.put(COL_AVG_MILEAGE, remote.avgMileageKmL);
+            cv.putNull(COL_GPX_PATH);
+            cv.put(COL_NOTES, remote.notes);
+            cv.put(COL_UPDATED_AT, remote.updatedAt);
+            cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+            cv.put(COL_DIRTY, 0);
+            db.insert(TABLE_RIDES, null, cv);
+            return true;
+        }
+    }
+
+    public synchronized boolean applyRemoteFuel(FuelLogEntry remote) {
+        if (remote == null || remote.uuid == null) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor c = db.query(TABLE_FUEL, null, COL_UUID + "=?", new String[]{remote.uuid}, null, null, null, "1");
+        boolean exists = false;
+        long localUpdatedAt = -1;
+        long localId = -1;
+        if (c != null) {
+            if (c.moveToFirst()) {
+                exists = true;
+                localId = c.getLong(c.getColumnIndexOrThrow("_id"));
+                int upIdx = c.getColumnIndex(COL_UPDATED_AT);
+                if (upIdx >= 0) localUpdatedAt = c.getLong(upIdx);
+            }
+            c.close();
+        }
+
+        if (exists) {
+            if (remote.updatedAt > localUpdatedAt) {
+                ContentValues cv = new ContentValues();
+                cv.put("timestamp", remote.timestamp);
+                cv.put("odometer_km", remote.odometerKm);
+                cv.put("litres", remote.litres);
+                cv.put("price_per_l", remote.pricePerLitre);
+                cv.put("total_cost", remote.totalCost);
+                cv.put("is_full", remote.isFull ? 1 : 0);
+                cv.put("notes", remote.notes);
+                cv.put(COL_UPDATED_AT, remote.updatedAt);
+                cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+                cv.put(COL_DIRTY, 0);
+                db.update(TABLE_FUEL, cv, "_id=?", new String[]{String.valueOf(localId)});
+                return true;
+            }
+            return false;
+        } else {
+            ContentValues cv = new ContentValues();
+            cv.put(COL_UUID, remote.uuid);
+            cv.put("timestamp", remote.timestamp);
+            cv.put("odometer_km", remote.odometerKm);
+            cv.put("litres", remote.litres);
+            cv.put("price_per_l", remote.pricePerLitre);
+            cv.put("total_cost", remote.totalCost);
+            cv.put("is_full", remote.isFull ? 1 : 0);
+            cv.put("notes", remote.notes);
+            cv.put(COL_UPDATED_AT, remote.updatedAt);
+            cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+            cv.put(COL_DIRTY, 0);
+            db.insert(TABLE_FUEL, null, cv);
+            return true;
+        }
+    }
+
+    public synchronized boolean applyRemoteService(ServiceLogEntry remote) {
+        if (remote == null || remote.uuid == null) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor c = db.query(TABLE_SERVICE, null, COL_UUID + "=?", new String[]{remote.uuid}, null, null, null, "1");
+        boolean exists = false;
+        long localUpdatedAt = -1;
+        long localId = -1;
+        if (c != null) {
+            if (c.moveToFirst()) {
+                exists = true;
+                localId = c.getLong(c.getColumnIndexOrThrow("_id"));
+                int upIdx = c.getColumnIndex(COL_UPDATED_AT);
+                if (upIdx >= 0) localUpdatedAt = c.getLong(upIdx);
+            }
+            c.close();
+        }
+
+        if (exists) {
+            if (remote.updatedAt > localUpdatedAt) {
+                ContentValues cv = new ContentValues();
+                cv.put("item_id", remote.itemId);
+                cv.put("timestamp", remote.timestamp);
+                cv.put("odometer_km", remote.odometerKm);
+                cv.put("notes", remote.notes);
+                cv.put("cost", remote.cost);
+                cv.put(COL_UPDATED_AT, remote.updatedAt);
+                cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+                cv.put(COL_DIRTY, 0);
+                db.update(TABLE_SERVICE, cv, "_id=?", new String[]{String.valueOf(localId)});
+                return true;
+            }
+            return false;
+        } else {
+            ContentValues cv = new ContentValues();
+            cv.put(COL_UUID, remote.uuid);
+            cv.put("item_id", remote.itemId);
+            cv.put("timestamp", remote.timestamp);
+            cv.put("odometer_km", remote.odometerKm);
+            cv.put("notes", remote.notes);
+            cv.put("cost", remote.cost);
+            cv.put(COL_UPDATED_AT, remote.updatedAt);
+            cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+            cv.put(COL_DIRTY, 0);
+            db.insert(TABLE_SERVICE, null, cv);
+            return true;
+        }
+    }
+
+    public synchronized boolean applyRemoteDtc(DtcLogEntry remote) {
+        if (remote == null || remote.uuid == null) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor c = db.query(TABLE_DTC, null, COL_UUID + "=?", new String[]{remote.uuid}, null, null, null, "1");
+        boolean exists = false;
+        long localUpdatedAt = -1;
+        long localId = -1;
+        if (c != null) {
+            if (c.moveToFirst()) {
+                exists = true;
+                localId = c.getLong(c.getColumnIndexOrThrow("_id"));
+                int upIdx = c.getColumnIndex(COL_UPDATED_AT);
+                if (upIdx >= 0) localUpdatedAt = c.getLong(upIdx);
+            }
+            c.close();
+        }
+
+        if (exists) {
+            if (remote.updatedAt > localUpdatedAt) {
+                ContentValues cv = new ContentValues();
+                cv.put("timestamp", remote.timestamp);
+                cv.put("code", remote.code);
+                cv.put("title", remote.title);
+                cv.put("severity", remote.severity);
+                cv.put("odometer_km", remote.odometerKm);
+                cv.put(COL_UPDATED_AT, remote.updatedAt);
+                cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+                cv.put(COL_DIRTY, 0);
+                db.update(TABLE_DTC, cv, "_id=?", new String[]{String.valueOf(localId)});
+                return true;
+            }
+            return false;
+        } else {
+            ContentValues cv = new ContentValues();
+            cv.put(COL_UUID, remote.uuid);
+            cv.put("timestamp", remote.timestamp);
+            cv.put("code", remote.code);
+            cv.put("title", remote.title);
+            cv.put("severity", remote.severity);
+            cv.put("odometer_km", remote.odometerKm);
+            cv.put(COL_UPDATED_AT, remote.updatedAt);
+            cv.put(COL_DELETED, remote.deleted ? 1 : 0);
+            cv.put(COL_DIRTY, 0);
+            db.insert(TABLE_DTC, null, cv);
+            return true;
+        }
     }
 
     // ---------------------------------------------------------------------
