@@ -26,8 +26,8 @@ android {
         applicationId 'com.xsr.companion'
         minSdk 37
         targetSdk 37
-        versionCode 4
-        versionName '2.3'
+        versionCode 5
+        versionName '2.4'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 
         buildConfigField "String", "SUPABASE_URL", "\"${supabaseUrl}\""
