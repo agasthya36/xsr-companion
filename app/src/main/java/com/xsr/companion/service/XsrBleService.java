@@ -230,6 +230,10 @@ public class XsrBleService extends Service {
     private long lastPointRecordMs = 0L;
 
     private long lastPacketMs = 0L;
+    // Temporary diagnostics: capture raw 0x56 CAN frames (max 1/sec) so the
+    // real on-wire CAN id and payload layout can be identified. Remove once
+    // the fuel-injection record is decoded from the SDK mapping.
+    private long lastRawCanLogMs = 0L;
     private long lastProcessMs = 0L;
     private long lastPersistMs = 0L;
     private long lastClockSyncMs = 0L;
@@ -996,6 +1000,12 @@ public class XsrBleService extends Service {
                     }
                 }, 300);
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                // Capture whether this was a live link before clearing state.
+                // A drop after a successful session must re-arm background
+                // connect even if the connection was started from the
+                // foreground (ACTION_RECONNECT / startScan), otherwise the app
+                // stays idle until it is manually reopened.
+                boolean wasConnected = isConnected;
                 isConnected = false;
                 sIsConnected = false;
                 handshakeComplete = false;
@@ -1008,6 +1018,10 @@ public class XsrBleService extends Service {
                 finishRide();
                 saveParkedLocation();
                 closeGatt();
+
+                if (wasConnected && !userDisconnect && settings.isBackgroundConnect()) {
+                    backgroundConnectMode = true;
+                }
 
                 if (backgroundConnectMode && !userDisconnect && settings.isBackgroundConnect()) {
                     broadcastStatus("Bike off. Waiting for it to come back…");
@@ -1221,6 +1235,15 @@ public class XsrBleService extends Service {
     // Incoming telemetry + processing loop
     // ---------------------------------------------------------------------
 
+    private static String toHex(byte[] data) {
+        StringBuilder sb = new StringBuilder(data.length * 2);
+        for (byte b : data) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
     private void handleIncoming(byte[] data) {
         if (data == null || data.length == 0) return;
 
@@ -1253,6 +1276,13 @@ public class XsrBleService extends Service {
         long dtMs = lastPacketMs == 0 ? 0 : now - lastPacketMs;
         lastPacketMs = now;
 
+        // Temporary: log one raw 0x56 frame per second so the real CAN id and
+        // record layout can be recovered from a ride capture.
+        if (data[0] == YamahaProtocol.START_BYTE_56 && now - lastRawCanLogMs >= 1000L) {
+            lastRawCanLogMs = now;
+            AppLogManager.getInstance().log(TAG, "RAW56 len=%d %s", data.length, toHex(data));
+        }
+
         boolean updated;
         synchronized (pendingTelemetry) {
             updated = YamahaProtocol.parseIncomingPacket(data, pendingTelemetry);
@@ -1269,25 +1299,40 @@ public class XsrBleService extends Service {
 
         double dtSec = Math.min(5.0, Math.max(0.0, dtMs / 1000.0));
         if (dtSec > 0.05) {
+            int rpm;
+            double throttle;
+            int airTemp;
+            double pressure;
             int speed;
             int coolant;
             double injection;
             synchronized (pendingTelemetry) {
+                rpm = pendingTelemetry.engineRpm;
+                throttle = pendingTelemetry.throttlePct;
+                airTemp = pendingTelemetry.airTemp;
+                pressure = pendingTelemetry.atmosphericPressure;
                 speed = pendingTelemetry.speedKmh;
                 coolant = pendingTelemetry.coolantTemp;
                 injection = pendingTelemetry.fuelInjection;
             }
 
-            // Same local path as the official app: 0x0300000E injection is
-            // already scaled to mL/s, so L/h = injection x 3.6.
-            double fuelRate = YamahaProtocol.calculateFuelRateLh(injection);
+            // Prefer the ECU injection record: 0x0300000E is already scaled to
+            // mL/s, so L/h = injection x 3.6. Fall back to the speed-density
+            // estimate when the record is missing/undecoded (injection <= 0),
+            // so a parser miss cannot silently report 0.00 L used.
+            double fuelRate;
+            if (injection > 0.0) {
+                fuelRate = YamahaProtocol.calculateFuelRateLh(injection);
+            } else {
+                fuelRate = YamahaProtocol.calculateFuelRateLh(rpm, throttle, airTemp, pressure);
+            }
             double mileage = YamahaProtocol.calculateInstantMileageKmL(speed, fuelRate);
 
             synchronized (pendingTelemetry) {
                 pendingTelemetry.fuelConsumptionRateLh = fuelRate;
                 pendingTelemetry.instantMileageKmL = mileage;
-                if (injection > 0.0) {
-                    double litres = YamahaProtocol.calculateFuelUsedL(injection, dtSec);
+                if (fuelRate > 0.0) {
+                    double litres = fuelRate * dtSec / 3600.0;
                     unsavedFuelL += litres;
                     if (currentRideId > 0) rideFuelL += litres;
                 }

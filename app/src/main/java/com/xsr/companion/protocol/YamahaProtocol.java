@@ -326,6 +326,35 @@ public final class YamahaProtocol {
     }
 
     /**
+     * Fallback fuel flow estimate (litres / hour) from ECU sensors.
+     *
+     * The 0x0300000E injection record is the preferred source, but its on-wire
+     * CAN id and mapping are supplied at runtime by the Yamaha SDK. Until that
+     * mapping is confirmed we keep a physical speed-density estimate so a
+     * missing/undecoded injection value does not silently report 0.00 L.
+     *
+     * Model: Yamaha 155cc VVA four-stroke, stoichiometric 14.7:1, gasoline
+     * density 740 g/L, throttle-derived volumetric efficiency, and air density
+     * corrected for intake temperature and barometric pressure.
+     */
+    public static double calculateFuelRateLh(int rpm, double throttlePct, int airTempC, double pressureKpa) {
+        if (rpm <= 0) return 0.0;
+        // Displacement: 155.1 cc = 0.1551 L
+        // 4-stroke single cylinder: 1 intake event every 2 revolutions -> rpm / 120 intake strokes / sec
+        double throttleNorm = Math.max(0.0, Math.min(100.0, throttlePct)) / 100.0;
+        // Volumetric efficiency curve: ~0.28 at idle, up to ~0.90 at wide-open throttle.
+        double ve = 0.28 + (0.62 * Math.pow(throttleNorm, 0.85));
+
+        double tempK = (airTempC > -20 && airTempC < 80) ? (airTempC + 273.15) : 298.15;
+        double pressKpa = (pressureKpa > 50 && pressureKpa < 120) ? pressureKpa : 101.325;
+        // Gas law: rho = P / (R_specific * T), R_specific = 287.058 J/(kg*K)
+        double airDensityGL = (pressKpa * 1000.0) / (287.058 * tempK);
+
+        double airFlowGs = ((rpm / 120.0) * 0.1551 * ve) * airDensityGL;
+        return Math.max(0.0, ((airFlowGs / 14.7) / 740.0) * 3600.0);
+    }
+
+    /**
      * Fuel burned over an interval. Mirrors the official app's
      * fuel_L = avgInjection x 0.001 x period.
      */

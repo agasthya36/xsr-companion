@@ -101,6 +101,16 @@ public class YamahaProtocolTest {
     }
 
     @Test
+    public void fuelRateFallbackEstimatesFromSensorPayload() {
+        // Engine off -> no fuel.
+        assertEquals(0.0, YamahaProtocol.calculateFuelRateLh(0, 50.0, 25, 101.325), 1e-9);
+        // Cruising at 5000 rpm / half throttle should give a plausible
+        // non-zero rate for the 155cc engine (not zero, not absurd).
+        double rate = YamahaProtocol.calculateFuelRateLh(5000, 50.0, 25, 101.325);
+        assertTrue("expected positive fallback rate, got " + rate, rate > 0.5 && rate < 8.0);
+    }
+
+    @Test
     public void fuelUsedIntegratesInjectionRate() {
         // 0.5 mL/s for 3 s = 1.5 mL = 0.0015 L.
         assertEquals(0.0015, YamahaProtocol.calculateFuelUsedL(0.5, 3.0), 1e-12);
