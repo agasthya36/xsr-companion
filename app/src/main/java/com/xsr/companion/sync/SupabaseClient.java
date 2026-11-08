@@ -76,36 +76,46 @@ public class SupabaseClient {
     }
 
     public HttpResponse get(String path, Map<String, String> extraHeaders) throws Exception {
-        return requestWithRetry("GET", path, null, extraHeaders);
+        return requestWithRetry("GET", path, null, extraHeaders, false);
     }
 
     public HttpResponse post(String path, String jsonBody, Map<String, String> extraHeaders) throws Exception {
-        return requestWithRetry("POST", path, jsonBody, extraHeaders);
+        return requestWithRetry("POST", path, jsonBody, extraHeaders, false);
     }
 
     public HttpResponse patch(String path, String jsonBody, Map<String, String> extraHeaders) throws Exception {
-        return requestWithRetry("PATCH", path, jsonBody, extraHeaders);
+        return requestWithRetry("PATCH", path, jsonBody, extraHeaders, false);
     }
 
     public HttpResponse delete(String path, Map<String, String> extraHeaders) throws Exception {
-        return requestWithRetry("DELETE", path, null, extraHeaders);
+        return requestWithRetry("DELETE", path, null, extraHeaders, false);
+    }
+
+    /**
+     * Requests that must NOT attach a session token or trigger a token refresh
+     * (e.g. /auth/v1/token, /auth/v1/otp, /auth/v1/verify, /auth/v1/logout).
+     * Using the authenticated {@link #post} for a refresh call would re-enter
+     * getAccessToken() -> refreshSession() -> post(...) and overflow the stack.
+     */
+    public HttpResponse postUnauthenticated(String path, String jsonBody, Map<String, String> extraHeaders) throws Exception {
+        return requestWithRetry("POST", path, jsonBody, extraHeaders, true);
     }
 
     private HttpResponse requestWithRetry(String method, String path, String body,
-                                          Map<String, String> extraHeaders) throws Exception {
-        HttpResponse response = executeSingle(method, path, body, extraHeaders);
-        if (response.statusCode == 401 && sessionCallback != null) {
+                                          Map<String, String> extraHeaders, boolean skipAuth) throws Exception {
+        HttpResponse response = executeSingle(method, path, body, extraHeaders, skipAuth);
+        if (!skipAuth && response.statusCode == 401 && sessionCallback != null) {
             // Attempt silent refresh and retry once
             boolean refreshed = sessionCallback.refreshSession();
             if (refreshed) {
-                response = executeSingle(method, path, body, extraHeaders);
+                response = executeSingle(method, path, body, extraHeaders, false);
             }
         }
         return response;
     }
 
     private HttpResponse executeSingle(String method, String path, String body,
-                                       Map<String, String> extraHeaders) throws Exception {
+                                       Map<String, String> extraHeaders, boolean skipAuth) throws Exception {
         String fullUrl = path.startsWith("http://") || path.startsWith("https://")
                 ? path
                 : (baseUrl + (path.startsWith("/") ? path : "/" + path));
@@ -122,9 +132,11 @@ public class SupabaseClient {
             conn.setRequestProperty("User-Agent", USER_AGENT);
             conn.setRequestProperty("apikey", anonKey);
 
-            String token = sessionCallback != null ? sessionCallback.getAccessToken() : null;
-            if (token != null && !token.isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token);
+            if (!skipAuth) {
+                String token = sessionCallback != null ? sessionCallback.getAccessToken() : null;
+                if (token != null && !token.isEmpty()) {
+                    conn.setRequestProperty("Authorization", "Bearer " + token);
+                }
             }
 
             if (extraHeaders != null) {

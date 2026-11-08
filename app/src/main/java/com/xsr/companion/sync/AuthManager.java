@@ -54,6 +54,9 @@ public class AuthManager implements SupabaseClient.SessionCallback {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    /** Reentrancy guard: true while this thread is inside refreshSession(). */
+    private final ThreadLocal<Boolean> refreshing = ThreadLocal.withInitial(() -> false);
+
     private AuthManager(Context context) {
         this.context = context.getApplicationContext();
         this.syncPrefs = this.context.getSharedPreferences(PREF_SYNC, Context.MODE_PRIVATE);
@@ -152,10 +155,17 @@ public class AuthManager implements SupabaseClient.SessionCallback {
     @Override
     public synchronized String getAccessToken() {
         String token = getRawAccessToken();
+        // Never re-enter refresh from within refresh on the same thread —
+        // that cycle (getAccessToken -> refreshSession -> post -> getAccessToken)
+        // caused a StackOverflowError crash loop.
+        if (refreshing.get()) return token;
         long expiresAt = getExpiresAt();
         long now = System.currentTimeMillis();
-        if (token != null && (expiresAt - now < EXPIRY_BUFFER_MS)) {
-            // Expiring soon or expired; refresh synchronously
+        boolean expiring = token == null
+                ? getRefreshToken() != null
+                : (expiresAt - now < EXPIRY_BUFFER_MS);
+        if (expiring) {
+            // Expiring soon, already expired, or missing access token; refresh synchronously
             refreshSession();
             token = getRawAccessToken();
         }
@@ -164,8 +174,10 @@ public class AuthManager implements SupabaseClient.SessionCallback {
 
     @Override
     public synchronized boolean refreshSession() {
+        if (refreshing.get()) return false;
         String refreshToken = getRefreshToken();
         if (refreshToken == null || refreshToken.isEmpty()) return false;
+        refreshing.set(true);
         try {
             JSONObject body = new JSONObject();
             body.put("refresh_token", refreshToken);
@@ -173,7 +185,9 @@ public class AuthManager implements SupabaseClient.SessionCallback {
             Map<String, String> headers = new HashMap<>();
             headers.put("Content-Type", "application/json");
 
-            SupabaseClient.HttpResponse resp = client.post(
+            // Unauthenticated: attaching a session token here would call
+            // getAccessToken() again and recurse until StackOverflow.
+            SupabaseClient.HttpResponse resp = client.postUnauthenticated(
                     "/auth/v1/token?grant_type=refresh_token", body.toString(), headers);
             if (resp.isSuccess()) {
                 JSONObject json = new JSONObject(resp.body);
@@ -186,6 +200,8 @@ public class AuthManager implements SupabaseClient.SessionCallback {
             }
         } catch (Exception e) {
             // Network failure or parsing failure; do not wipe tokens yet
+        } finally {
+            refreshing.set(false);
         }
         return false;
     }
@@ -233,7 +249,7 @@ public class AuthManager implements SupabaseClient.SessionCallback {
                 Map<String, String> headers = new HashMap<>();
                 headers.put("Content-Type", "application/json");
 
-                SupabaseClient.HttpResponse resp = client.post("/auth/v1/otp", body.toString(), headers);
+                SupabaseClient.HttpResponse resp = client.postUnauthenticated("/auth/v1/otp", body.toString(), headers);
                 if (resp.isSuccess()) {
                     notifySuccess(callback, "Verification code sent to " + trimmedEmail);
                 } else if (resp.statusCode == 429) {
@@ -270,7 +286,7 @@ public class AuthManager implements SupabaseClient.SessionCallback {
                 Map<String, String> headers = new HashMap<>();
                 headers.put("Content-Type", "application/json");
 
-                SupabaseClient.HttpResponse resp = client.post("/auth/v1/verify", body.toString(), headers);
+                SupabaseClient.HttpResponse resp = client.postUnauthenticated("/auth/v1/verify", body.toString(), headers);
                 if (resp.isSuccess()) {
                     JSONObject json = new JSONObject(resp.body);
                     saveSessionTokens(json);
@@ -294,7 +310,7 @@ public class AuthManager implements SupabaseClient.SessionCallback {
                 try {
                     Map<String, String> headers = new HashMap<>();
                     headers.put("Authorization", "Bearer " + token);
-                    client.post("/auth/v1/logout", "{}", headers);
+                    client.postUnauthenticated("/auth/v1/logout", "{}", headers);
                 } catch (Exception ignored) {}
             }
             clearSession();
